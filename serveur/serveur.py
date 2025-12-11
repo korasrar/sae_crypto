@@ -105,6 +105,27 @@ class Session(Thread):
         """
         connect nomJoueur motDePasse : demande de connexion du client
         """
+        if len(args) < 2:
+            self.envoyer_erreur("Usage: connect nomJoueur motDePasse")
+            return
+        
+        nom_joueur = args[0]
+        mot_de_passe = args[1]
+        
+        if nom_joueur in joueurs_connectes:
+            self.envoyer_erreur("Le joueur est déjà présent dans la partie")
+            return
+        
+        if nom_joueur not in joueurs_enregistres:
+            self.envoyer_erreur("Le nom du joueur n'est pas register")
+            return
+        
+        if joueurs_enregistres[nom_joueur] != mot_de_passe:
+            self.envoyer_erreurz("Le mot de passe n'est pas correct")
+            return
+        
+        joueurs_connectes[nom_joueur] = mot_de_passe
+        
         self.envoyer_ok()
 
         with verrou_joueurs:
