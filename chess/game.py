@@ -65,7 +65,7 @@ class Jeu():
                 validator = chess.Move.from_uci(move)
     
                 while validator not in self.board.legal_moves:
-                    print(self.board)
+                    self.affiche_plateau()
                     print ("Ceci est un mouvement illegal")
                     move = input("Un mouvement légal : ")
                     validator = chess.Move.from_uci(move)
