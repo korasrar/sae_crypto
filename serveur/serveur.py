@@ -1,3 +1,6 @@
+"""
+Module Server et Session pour la sae_crypto
+"""
 import socket
 from threading import Thread, Lock
 
@@ -9,11 +12,18 @@ verrou_joueurs = Lock()
 
 
 class Serveur:
-
+    """
+    Classe Serveur qui s'occupe de la réception des connexions joueurs
+    """
     def __init__(self):
         self.compteur = 0
 
     def demarrer(self, port):
+        """permet de démarrer le serveur sur le port donné et d'attendre les connexions
+
+        Args:
+            port (int): port d'écoute du serveur
+        """
         socket_serveur = socket.socket()
         socket_serveur.bind(("0.0.0.0", port))
         socket_serveur.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -26,6 +36,11 @@ class Serveur:
 
 
 class Session(Thread):
+    """Classe Session qui s'occupe de la communication avec un client
+
+    Args:
+        Thread (): hérite de Thread
+    """
 
     # dico des commandes
     COMMANDES = {
@@ -108,24 +123,24 @@ class Session(Thread):
         if len(args) < 2:
             self.envoyer_erreur("Usage: connect nomJoueur motDePasse")
             return
-        
+
         nom_joueur = args[0]
         mot_de_passe = args[1]
-        
+
         if nom_joueur in joueurs_connectes:
             self.envoyer_erreur("Le joueur est déjà présent dans la partie")
             return
-        
+
         if nom_joueur not in joueurs_enregistres:
             self.envoyer_erreur("Le nom du joueur n'est pas register")
             return
-        
+
         if joueurs_enregistres[nom_joueur] != mot_de_passe:
-            self.envoyer_erreurz("Le mot de passe n'est pas correct")
+            self.envoyer_erreur("Le mot de passe n'est pas correct")
             return
-        
+
         joueurs_connectes[nom_joueur] = mot_de_passe
-        
+
         self.envoyer_ok()
 
         with verrou_joueurs:
@@ -143,6 +158,9 @@ class Session(Thread):
         if not self.en_partie:
             self.envoyer_erreur("Vous n'êtes pas dans une partie")
             return
+        
+        case_source = args[0]
+        case_destination = args[1]
 
         # Coups deja vérifier par le client
         self.envoyer_ok()
@@ -220,8 +238,8 @@ class Session(Thread):
             self.attend_replay = False
             self.adversaire.attend_replay = False
 
-            self.couleur, self.adversaire.couleur = (
-                self.adversaire.couleur, self.couleur)
+            self.couleur, self.adversaire.couleur = (self.adversaire.couleur,
+                                                     self.couleur)
 
             self.envoyer(f"start {self.couleur}")
             self.adversaire.envoyer(f"start {self.adversaire.couleur}")
@@ -287,7 +305,6 @@ class Session(Thread):
             return False
 
     def run(self):
-        global compteur
         try:
             while True:
                 # méthode bloquante, on attend de recevoir une string
