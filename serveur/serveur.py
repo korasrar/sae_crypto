@@ -205,6 +205,26 @@ class Session(Thread):
         replay : relance le jeu contre le même adversaire
         Les deux joueurs doivent avoir envoyé cette commande
         """
+        if not self.en_partie or not self.adversaire:
+            self.envoyer_erreur("Aucune partie en cours")
+            return
+
+        if self.attend_replay:
+            self.envoyer_erreur("Vous avez déjà demandé un replay")
+            return
+
+        self.attend_replay = True
+        self.envoyer_ok()
+
+        if self.adversaire.attend_replay:
+            self.attend_replay = False
+            self.adversaire.attend_replay = False
+
+            self.couleur, self.adversaire.couleur = (
+                self.adversaire.couleur, self.couleur)
+
+            self.envoyer(f"start {self.couleur}")
+            self.adversaire.envoyer(f"start {self.adversaire.couleur}")
 
     def cmd_new(self, args):
         """
