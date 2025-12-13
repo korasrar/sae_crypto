@@ -44,6 +44,7 @@ class Session(Thread):
 
     # dico des commandes
     COMMANDES = {
+        "register": "cmd_register",
         "connect": "cmd_connect",
         "play": "cmd_play",
         "leave": "cmd_leave",
