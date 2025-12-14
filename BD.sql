@@ -25,3 +25,19 @@ create table STATISTIQUES(
     
     FOREIGN KEY (joueurId) REFERENCES JOUEUR(idJoueur)
 );
+
+CREATE TABLE PARTICIPER (
+    idJoueur int,
+    idPartie int,
+    PRIMARY KEY (idJoueur, idPartie),
+    FOREIGN KEY (idJoueur) REFERENCES JOUEUR(idJoueur),
+    FOREIGN KEY (idPartie) REFERENCES PARTIE(idPartie)
+);
+
+
+CREATE TABLE STAT_JOUEUR (
+    idJoueur int primary key,
+    idStat int,
+    FOREIGN KEY (idJoueur) REFERENCES JOUEUR(idJoueur),
+    FOREIGN KEY (idStat) REFERENCES STATISTIQUES(idStat)
+);
