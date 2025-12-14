@@ -1,0 +1,9 @@
+astroid==4.0.2
+chess==1.11.2
+dill==0.4.0
+graphviz==0.21
+isort==7.0.0
+mccabe==0.7.0
+platformdirs==4.5.1
+pylint==4.0.4
+tomlkit==0.13.3
