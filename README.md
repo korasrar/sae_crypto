@@ -133,7 +133,10 @@ Par défaut, le client se connecte à `localhost:15001`. Modifiez les paramètre
 
 ## 👥 Auteurs
 
-Projet SAE Cryptographie
+- FOUCHER Matteo
+- COSME VINOU Ilona
+- MAUBERT Célestin
+- HUCHE River
 
 ## 📄 Licence
 
