@@ -15,6 +15,7 @@ class Serveur:
     """
     Classe Serveur qui s'occupe de la réception des connexions joueurs
     """
+
     def __init__(self):
         self.compteur = 0
 
@@ -141,15 +142,9 @@ class Session(Thread):
             return
 
         joueurs_connectes[nom_joueur] = mot_de_passe
+        self.nom_joueur = nom_joueur
 
         self.envoyer_ok()
-
-        with verrou_joueurs:
-            if self.adversaire:
-                self.adversaire.envoyer(f"start {self.adversaire.couleur}")
-                self.envoyer(f"start {self.couleur}")
-            else:
-                joueurs_en_attente.append(self)
 
     def cmd_play(self, args):
         """
@@ -159,7 +154,7 @@ class Session(Thread):
         if not self.en_partie:
             self.envoyer_erreur("Vous n'êtes pas dans une partie")
             return
-        
+
         case_source = args[0]
         case_destination = args[1]
 
