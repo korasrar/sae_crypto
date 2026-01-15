@@ -7,7 +7,7 @@ import chess
 class Client:
     """classe Client"""
 
-    def __init__(self, host="localhost", port=15001):
+    def __init__(self, host="10.200.225.165", port=15001):
         """Initialise le client
         Args:
             host (str): Adresse du serveur

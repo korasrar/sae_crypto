@@ -2,6 +2,7 @@
 #https://python-forum.io/thread-40976.html
 
 import chess
+import chess.svg
 import pygame
 import sys
 from io import BytesIO # standard lib
@@ -11,7 +12,8 @@ WINDOWWIDTH = 390
 WINDOWHEIGHT = 390
 
 board = chess.Board() 
-svg_text = board._repr_svg_()
+print(board)
+svg_text = chess.svg.board(board)
  
 svg_bytes = bytes(svg_text, encoding='utf-8')
 bytestream = BytesIO(svg_bytes) # or "with BytesIO(svg_bytes) as bytestream: ..."
