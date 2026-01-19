@@ -2,12 +2,17 @@ import socket
 from threading import Thread, Lock
 import time
 import chess
-
+import chess.svg
+import pygame
+import sys
+from io import BytesIO
+from pygame.locals import QUIT
+import cairosvg
 
 class Client:
     """classe Client"""
 
-    def __init__(self, host="10.200.225.165", port=15001):
+    def __init__(self, host="172.26.192.146", port=15002):
         """Initialise le client
         Args:
             host (str): Adresse du serveur
@@ -27,6 +32,7 @@ class Client:
         self.board = chess.Board()
         self.derniere_reponse = None
         self.attente_reponse = False
+        self.surface = None
 
     def connecter(self):
         """se connecte au serveur"""
@@ -175,6 +181,7 @@ class Client:
             if move in self.board.legal_moves:
                 self.board.push(move)
                 print(f"\n l'adversaire a joué: {case_src} → {case_dst}")
+                self.surface = self.board_to_surface(self.board)
                 self.affiche_plateau()
 
                 if self.board.is_game_over():
@@ -358,13 +365,21 @@ class Client:
         if not self.partie_trouvee:
             print("La connexion a été perdue.")
             return
-
+        
+        pygame.init()
+        screen = pygame.display.set_mode((390, 390))
         while self.en_partie and self.connecte:
             if self.est_mon_tour():
                 self.menu_en_jeu()
+                self.surface = self.board_to_surface(self.board)
+                screen.blit(self.surface, (0, 0))
+                pygame.display.update()
                 commande = input("\nC'est votre tour! Entrez une commande: "
                                  ).strip().lower()
                 self.traiter_commande_jeu(commande)
+                self.surface = self.board_to_surface(self.board)
+                screen.blit(self.surface, (0, 0))
+                pygame.display.update()
             else:
                 print("\nC'est au tour de l'adversaire, veuillez patienter...")
                 while not self.est_mon_tour(
@@ -485,7 +500,11 @@ class Client:
         else:
             print("Pas de partie en cours.")
             return False
-
+        
+    def board_to_surface(self, board: chess.Board) -> pygame.Surface:
+        svg_text = chess.svg.board(board)  # SVG text
+        png_bytes = cairosvg.svg2png(bytestring=svg_text.encode("utf-8"))  # rasterize SVG -> PNG bytes
+        return pygame.image.load(BytesIO(png_bytes))
 
 if __name__ == "__main__":
     client = Client()
