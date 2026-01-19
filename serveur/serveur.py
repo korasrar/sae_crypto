@@ -331,6 +331,9 @@ class Session(Thread):
         self.envoyer_non_chiffre(f"SYNC {clef_publique}")
 
         ligne_clef_publique_client = self.fichier.readline().strip()
+        # recuperer la clef qui se trouve apres "SYNC "
+        ligne_clef_publique_client = ligne_clef_publique_client[5:]
+
         clef_publique_client = int(ligne_clef_publique_client)
         print(f"clef pub client: {clef_publique_client}")
 
