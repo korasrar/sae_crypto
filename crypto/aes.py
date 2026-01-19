@@ -16,8 +16,9 @@ class ChiffrementAES:
     def obtenir_cle(self):
         return self.cle
     
-    def set_cle(self):
-        
+    def set_cle(self, new_cle):
+        self.cle = new_cle
+            
     def chiffrer(self, message):
         return self.fernet.encrypt(message.encode()).decode()
     
