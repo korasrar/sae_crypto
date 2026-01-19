@@ -10,7 +10,7 @@ from math import gcd as bltin_gcd
 class DiffieHellman:
     """Classe de chiffrement Diffie-Hellman"""
 
-    def generer_public_params(self, taille_bits=2048):
+    def generer_public_params(self, taille_bits=10):
         """Génère les paramètres publics p et g."""
         p = self.generer_prime(taille_bits)
         g = self.generer_generator(p)
@@ -51,3 +51,4 @@ class DiffieHellman:
     def calculer_clef_publique(self, g, secret, p):
         """Calcule la clef publique en utilisant le générateur g, son propre secret et le nombre premier p."""
         return pow(g, secret, p)
+    

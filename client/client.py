@@ -8,7 +8,7 @@ from crypto.diffie_hellman import DiffieHellman
 class Client:
     """classe Client"""
 
-    def __init__(self, host="localhost", port=15001):
+    def __init__(self, host="localhost", port=15002):
         """Initialise le client
         Args:
             host (str): Adresse du serveur
@@ -44,9 +44,13 @@ class Client:
             thread_ecoute = Thread(target=self.ecouter_serveur, daemon=True)
             thread_ecoute.start()
             message_serv = self.recevoir()
+            print(message_serv)
 
             if "SYNC" in message_serv:
+                print("test 1")
                 parties = message_serv.split()
+                print(len(parties))
+                print(parties)
                 if len(parties) == 3 & parties != []:
                     print("Le client a bien reçu les param p et g")
                     self.parametres.append(parties[1:])
@@ -122,6 +126,7 @@ class Client:
     def traiter_message(self, message):
         """traite les messages reçus du serveur"""
         parties = message.split()
+        print(parties)
         if not parties:
             return
         commande = parties[0]
