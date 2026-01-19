@@ -43,32 +43,6 @@ class Client:
 
             thread_ecoute = Thread(target=self.ecouter_serveur, daemon=True)
             thread_ecoute.start()
-            message_serv = self.recevoir()
-
-            if "SYNC" in message_serv:
-                parties = message_serv.split()
-                if len(parties) == 3 & parties != []:
-                    print("Le client a bien reçu les param p et g")
-                    self.parametres.append(parties[1:])
-            
-            secret = self.diffie_hellman.choisir_secret(self.parametres[0])
-            print(f"secret: {secret}")
-
-            clef_publique = self.diffie_hellman.calculer_clef_publique(self.parametres[1], secret, self.parametres[0])
-            print(f"clef pub du client: {clef_publique}")            
-            self.envoyer("SYNC"+clef_publique)
-
-            if "SYNC" in message_serv:
-                parties = message_serv.split()
-                if len(parties) == 2 & parties != []:
-                    ligne_clef_publique_serveur = self.fichier.readline().strip()
-                    clef_publique_serveur = int(ligne_clef_publique_serveur)
-                print(f"clef pub serveur: {clef_publique_serveur}")
-
-            clef_partagee = self.diffie_hellman.calculer_clef_partagee(
-            clef_publique_serveur, secret, self.parametres[0])
-            print(f"clef partage: {clef_partagee}")
-            self.chiffrement.set_clef(clef_partagee)
 
             return True
 
@@ -158,6 +132,28 @@ class Client:
         elif commande == "lose":
             print("Vous avez perdu par abandon.")
             self.en_partie = False
+
+        elif "SYNC" in commande:
+            parties = commande.split()
+            if len(parties) == 3 & parties != []:
+                print("Le client a bien reçu les param p et g")
+                self.parametres.append(parties[1:])
+
+            secret = self.diffie_hellman.choisir_secret(self.parametres[0])
+            print(f"secret: {secret}")
+            clef_publique = self.diffie_hellman.calculer_clef_publique(self.parametres[1], secret, self.parametres[0])
+            print(f"clef pub du client: {clef_publique}")            
+            self.envoyer("SYNC"+clef_publique)
+
+            if len(parties) == 2 & parties != []:
+                ligne_clef_publique_serveur = self.fichier.readline().strip()
+                clef_publique_serveur = int(ligne_clef_publique_serveur)
+                print(f"clef pub serveur: {clef_publique_serveur}")
+
+            clef_partagee = self.diffie_hellman.calculer_clef_partagee(
+            clef_publique_serveur, secret, self.parametres[0])
+            print(f"clef partage: {clef_partagee}")
+            self.chiffrement.set_clef(clef_partagee)
 
     def attendre_reponse(self, timeout=5):
         """attend une réponse du serveur avec un timeout"""
