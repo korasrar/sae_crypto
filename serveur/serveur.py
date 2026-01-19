@@ -3,6 +3,7 @@ Module Server et Session pour la sae_crypto
 """
 import socket
 from threading import Thread, Lock
+from crypto.aes import ChiffrementAES
 
 joueurs_enregistres = {}
 joueurs_connectes = {}
@@ -65,12 +66,14 @@ class Session(Thread):
         self.adversaire = None
         self.couleur = None  # 'w' ou 'b'
         self.attend_replay = False
+        self.chiffrement = ChiffrementAES()
         self.start()
 
     def envoyer(self, message):
         """Envoie un message au client"""
         with self.verrou:
-            self.fichier.write(message + "\n")
+            message_chiffre = self.chiffrement.chiffrer(message)
+            self.fichier.write(message_chiffre + "\n")
             self.fichier.flush()
 
     def envoyer_ok(self):
@@ -309,6 +312,7 @@ class Session(Thread):
                 if not ligne:
                     break
 
+                ligne = self.chiffrement.dechiffrer(ligne)
                 doit_fermer = self.construire_commande(ligne)
 
                 if doit_fermer:

@@ -2,6 +2,7 @@ import socket
 from threading import Thread, Lock
 import time
 import chess
+from crypto.aes import ChiffrementAES
 
 
 class Client:
@@ -27,6 +28,7 @@ class Client:
         self.board = chess.Board()
         self.derniere_reponse = None
         self.attente_reponse = False
+        self.chiffrement = ChiffrementAES()
 
     def connecter(self):
         """se connecte au serveur"""
@@ -49,7 +51,8 @@ class Client:
         """envoie un message au serveur"""
         try:
             with self.verrou:
-                self.fichier.write(message + "\n")
+                message_chiffre = self.chiffrement.chiffrer(message)
+                self.fichier.write(message_chiffre + "\n")
                 self.fichier.flush()
         except Exception as e:
             print(f"le client n'a pas pu envoyer le message: {e}")
@@ -59,6 +62,8 @@ class Client:
         """reçoit un message du serveur"""
         try:
             ligne = self.fichier.readline().strip()
+            if ligne:
+                ligne = self.chiffrement.dechiffrer(ligne)
             return ligne
         except:
             self.connecte = False
