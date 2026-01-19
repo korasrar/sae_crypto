@@ -3,7 +3,7 @@ from threading import Thread, Lock
 import time
 import chess
 from crypto.aes import ChiffrementAES
-
+from crypto.diffie_hellman import DiffieHellman
 
 class Client:
     """classe Client"""
@@ -29,6 +29,8 @@ class Client:
         self.derniere_reponse = None
         self.attente_reponse = False
         self.chiffrement = ChiffrementAES()
+        self.parametres = []
+        self.diffie_hellman = DiffieHellman()
 
     def connecter(self):
         """se connecte au serveur"""
@@ -41,13 +43,40 @@ class Client:
 
             thread_ecoute = Thread(target=self.ecouter_serveur, daemon=True)
             thread_ecoute.start()
+            message_serv = self.recevoir()
+
+            if "SYNC" in message_serv:
+                parties = message_serv.split()
+                if len(parties) == 3 & parties != []:
+                    print("Le client a bien reçu les param p et g")
+                    self.parametres.append(parties[1:])
+            
+            secret = self.diffie_hellman.choisir_secret(self.parametres[0])
+            print(f"secret: {secret}")
+
+            clef_publique = self.diffie_hellman.calculer_clef_publique(self.parametres[1], secret, self.parametres[0])
+            print(f"clef pub du client: {clef_publique}")            
+            self.envoyer("SYNC"+clef_publique)
+
+            if "SYNC" in message_serv:
+                parties = message_serv.split()
+                if len(parties) == 2 & parties != []:
+                    ligne_clef_publique_serveur = self.fichier.readline().strip()
+                    clef_publique_serveur = int(ligne_clef_publique_serveur)
+                print(f"clef pub serveur: {clef_publique_serveur}")
+
+            clef_partagee = self.diffie_hellman.calculer_clef_partagee(
+            clef_publique_serveur, secret, self.parametres[0])
+            print(f"clef partage: {clef_partagee}")
+            self.chiffrement.set_clef(clef_partagee)
 
             return True
+
         except Exception as e:
-            print(f"il ya une erreur inatendue : {e}")
+            print(f"il ya une erreur inatendue, le client n'a pas reçu p et g : {e}")
             return False
 
-    def envoyer(self, message):
+    def envoyer_chiffrer(self, message):
         """envoie un message au serveur"""
         try:
             with self.verrou:
@@ -58,12 +87,20 @@ class Client:
             print(f"le client n'a pas pu envoyer le message: {e}")
             self.connecte = False
 
+    def envoyer(self, message):
+        """envoie un message au serveur"""
+        try:
+            with self.verrou:
+                self.fichier.write(message + "\n")
+                self.fichier.flush()
+        except Exception as e:
+            print(f"le client n'a pas pu envoyer le message: {e}")
+            self.connecte = False
+
     def recevoir(self):
         """reçoit un message du serveur"""
         try:
             ligne = self.fichier.readline().strip()
-            if ligne:
-                ligne = self.chiffrement.dechiffrer(ligne)
             return ligne
         except:
             self.connecte = False

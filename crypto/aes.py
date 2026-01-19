@@ -1,4 +1,7 @@
 from cryptography.fernet import Fernet
+from crypto import diffie_hellman
+from serveur import serveur
+from client import client
 
 
 class ChiffrementAES:
@@ -13,6 +16,8 @@ class ChiffrementAES:
     def obtenir_cle(self):
         return self.cle
     
+    def set_cle(self):
+        
     def chiffrer(self, message):
         return self.fernet.encrypt(message.encode()).decode()
     
