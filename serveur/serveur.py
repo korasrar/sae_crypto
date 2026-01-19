@@ -2,7 +2,12 @@
 Module Server et Session pour la sae_crypto
 """
 import socket
+import sqlite3
 from threading import Thread, Lock
+from requests import session
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from models import SessionLocal,Base, Joueur, Partie, Coup
 
 joueurs_enregistres = {}
 joueurs_connectes = {}
@@ -60,11 +65,14 @@ class Session(Thread):
         self.socket = sock
         self.fichier = sock.makefile(mode="rw")
         self.verrou = Lock()
+        self.db = SessionLocal()
         self.nom_joueur = None
         self.en_partie = False
         self.adversaire = None
         self.couleur = None  # 'w' ou 'b'
         self.attend_replay = False
+        self.id_partie_bd = None
+        self.nb_coups = 0
         self.start()
 
     def envoyer(self, message):
@@ -155,14 +163,17 @@ class Session(Thread):
             self.envoyer_erreur("Vous n'êtes pas dans une partie")
             return
 
-        case_source = args[0]
+        case_source= args[0]
         case_destination = args[1]
+        notation = f"{case_source}{case_destination}"
+        self.nb_coup += 1
 
         # Coups deja vérifier par le client
         self.envoyer_ok()
 
         if self.adversaire:
             self.adversaire.envoyer(f"play {case_source} {case_destination}")
+            self.adversaire.nb_coups = self.nb_coups
 
     def cmd_leave(self, args):
         """
@@ -342,6 +353,20 @@ class Session(Thread):
             self.socket.close()
         except:
             pass
+
+class GestionnaireBD:
+    def __init__(self, db_path="echecs.db"):
+        self.db_path = db_path
+
+    def ajouter_coup(self, id_partie, id_joueur, notation, numero_coup):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO COUP (idPartie, idJoueur, notation, numeroCoup, dateHeure)
+            VALUES (?, ?, ?, ?, datetime('now'))
+        """, (id_partie, id_joueur, notation, numero_coup))
+        conn.commit()
+        conn.close()
 
 
 if __name__ == "__main__":
