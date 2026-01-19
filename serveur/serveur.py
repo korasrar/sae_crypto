@@ -4,6 +4,7 @@ Module Server et Session pour la sae_crypto
 import socket
 from threading import Thread, Lock
 from crypto.aes import ChiffrementAES
+from crypto.diffie_hellman import DiffieHellman
 
 joueurs_enregistres = {}
 joueurs_connectes = {}
@@ -19,6 +20,7 @@ class Serveur:
 
     def __init__(self):
         self.compteur = 0
+        self.diffie_hellman = DiffieHellman()
 
     def demarrer(self, port):
         """permet de démarrer le serveur sur le port donné et d'attendre les connexions
@@ -74,6 +76,12 @@ class Session(Thread):
         with self.verrou:
             message_chiffre = self.chiffrement.chiffrer(message)
             self.fichier.write(message_chiffre + "\n")
+            self.fichier.flush()
+
+    def envoyer_non_chiffre(self, message):
+        """Envoie un message non chiffré au client"""
+        with self.verrou:
+            self.fichier.write(message + "\n")
             self.fichier.flush()
 
     def envoyer_ok(self):
@@ -303,16 +311,51 @@ class Session(Thread):
             self.envoyer_erreur(f"Commande inconnue: {commande}")
             return False
 
+    def etablir_connexion_securisee(self):
+        """
+        Établit une connexion sécurisée avec le client via Diffie-Hellman
+        et initialise le chiffrement AES
+        """
+        p, g = self.serveur.diffie_hellman.generer_public_params()
+        print(f"p={p}, g={g}")
+
+        self.envoyer_non_chiffre(f"SYNC {p} {g}")
+
+        secret = self.serveur.diffie_hellman.choisir_secret(p)
+        print(f"secret: {secret}")
+
+        clef_publique = self.serveur.diffie_hellman.calculer_clef_publique(
+            g, secret, p)
+        print(f"clef pub du serveur: {clef_publique}")
+
+        self.envoyer_non_chiffre(f"SYNC {clef_publique}")
+
+        ligne_clef_publique_client = self.fichier.readline().strip()
+        # recuperer la clef qui se trouve apres "SYNC "
+        ligne_clef_publique_client = ligne_clef_publique_client[5:]
+
+        clef_publique_client = int(ligne_clef_publique_client)
+        print(f"clef pub client: {clef_publique_client}")
+
+        clef_partagee = self.serveur.diffie_hellman.calculer_clef_partagee(
+            clef_publique_client, secret, p)
+        print(f"clef partage: {clef_partagee}")
+
+        self.chiffrement.set_clef(clef_partagee)
+
     def run(self):
         try:
+            self.etablir_connexion_securisee()
+
             while True:
                 # méthode bloquante, on attend de recevoir une string
                 ligne = self.fichier.readline().strip()
+                ligne = self.chiffrement.dechiffrer(ligne)
+                print(f"Reçu (déchiffré): {ligne}")
 
                 if not ligne:
                     break
 
-                ligne = self.chiffrement.dechiffrer(ligne)
                 doit_fermer = self.construire_commande(ligne)
 
                 if doit_fermer:
