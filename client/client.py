@@ -4,15 +4,13 @@ import time
 import chess
 import chess.svg
 import pygame
-import sys
 from io import BytesIO
-from pygame.locals import QUIT
 import cairosvg
 
 class Client:
     """classe Client"""
 
-    def __init__(self, host="172.26.192.146", port=15001):
+    def __init__(self, host="localhost", port=15001):
         """Initialise le client
         Args:
             host (str): Adresse du serveur
