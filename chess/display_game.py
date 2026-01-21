@@ -27,7 +27,7 @@ def main():
     surface = board_to_surface(board, size=WINDOWWIDTH)
 
     screen.blit(surface, (0, 0))
-    pygame.display.flip()
+    pygame.display.update()
 
     while True:
         for event in pygame.event.get():
