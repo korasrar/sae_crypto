@@ -9,7 +9,7 @@ from crypto.diffie_hellman import DiffieHellman
 class Client:
     """classe Client"""
 
-    def __init__(self, host="localhost", port=15001):
+    def __init__(self, host="localhost", port=15002):
         """Initialise le client
         Args:
             host (str): Adresse du serveur
@@ -99,7 +99,11 @@ class Client:
 
     def traiter_message(self, message):
         """traite les messages reçus du serveur"""
-        parties = message.split()
+        # si c'est None, la commande n'est pas chiffrer, donc c'est SYNC
+        if self.chiffrement.dechiffrer(message) is None:
+            parties = message.split()
+        else:
+            parties = self.chiffrement.dechiffrer(message).split()
 
         if not parties:
             return
@@ -177,7 +181,7 @@ class Client:
 
     def register(self, nom_joueur, mot_de_passe):
         """enregistre un nouveau joueur"""
-        self.envoyer(f"register {nom_joueur} {mot_de_passe}")
+        self.envoyer_chiffrer(f"register {nom_joueur} {mot_de_passe}")
         reponse = self.attendre_reponse()
         if reponse == "OK":
             print("Enregistrement réussi.")
@@ -190,7 +194,7 @@ class Client:
 
     def login(self, nom_joueur, mot_de_passe):
         """se connecte avec un compte"""
-        self.envoyer(f"connect {nom_joueur} {mot_de_passe}")
+        self.envoyer_chiffrer(f"connect {nom_joueur} {mot_de_passe}")
         reponse = self.attendre_reponse()
         if reponse == "OK":
             self.nom_joueur = nom_joueur
@@ -204,7 +208,7 @@ class Client:
 
     def chercher_partie(self):
         """cherche une partie"""
-        self.envoyer("new")
+        self.envoyer_chiffrer("new")
         reponse = self.attendre_reponse()
         if reponse == "OK":
             print("Recherche de partie lancée...")
@@ -294,7 +298,7 @@ class Client:
     def abandonner_partie(self):
         """abandonne la partie en cours"""
         if self.en_partie:
-            self.envoyer("leave")
+            self.envoyer_chiffrer("leave")
             reponse = self.attendre_reponse()
             if reponse == "OK":
                 self.en_partie = False
@@ -477,7 +481,7 @@ class Client:
                 print(f"Coup illégal: {case_src} → {case_dst}")
                 return False
 
-            self.envoyer(f"play {case_src} {case_dst}")
+            self.envoyer_chiffrer(f"play {case_src} {case_dst}")
             reponse = self.attendre_reponse()
 
             if reponse == "OK":
@@ -501,7 +505,7 @@ class Client:
     def demander_replay(self):
         """demande une revanche"""
         if self.en_partie:
-            self.envoyer("replay")
+            self.envoyer_chiffrer("replay")
             reponse = self.attendre_reponse()
             if reponse == "OK":
                 print(
@@ -520,7 +524,7 @@ class Client:
     def quitter_partie(self):
         """quitte la partie en cours"""
         if self.en_partie:
-            self.envoyer("leave")
+            self.envoyer_chiffrer("leave")
             reponse = self.attendre_reponse()
             if reponse == "OK":
                 self.en_partie = False
