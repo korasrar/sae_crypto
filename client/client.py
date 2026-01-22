@@ -346,6 +346,7 @@ class Client:
         print("\n" + "=" * 40)
         print("COMMANDES DISPONIBLES:")
         print("  [move] <src> <dst> : Jouer un coup (ex: move e2 e4)")
+        print("  [promote] <src> <dst> <piece> : Promouvoir un pion (ex: promote a7 e8 q)")
         print("  [legal]            : Afficher les coups légaux")
         print("  [board]            : Afficher le plateau")
         print("  [resign]           : Abandonner la partie")
@@ -395,14 +396,32 @@ class Client:
             if len(parties) >= 3:
                 case_src = parties[1]
                 case_dst = parties[2]
-                self.jouer_coup(case_src, case_dst)
+                self.jouer_coup(case_src, case_dst, None, False)
+                
             elif len(parties) == 2 and len(parties[1]) == 4:
                 move_str = parties[1]
                 case_src = move_str[:2]
                 case_dst = move_str[2:]
-                self.jouer_coup(case_src, case_dst)
+                self.jouer_coup(case_src, case_dst, None, False)
             else:
                 print("Usage: move <src> <dst> (ex: move e2 e4)")
+        
+        elif cmd == "promote":
+            if len(parties) >= 4:
+                case_src = parties[1]
+                case_dst = parties[2]
+                promote_piece = parties[3]
+                self.jouer_coup(case_src, case_dst, promote_piece, True)
+                
+            elif len(parties) == 3 and len(parties[1]) == 4:
+                move_str = parties[1]
+                case_src = move_str[:2]  
+                case_dst = move_str[2:]
+                promote_piece = parties[3]  
+                self.jouer_coup(case_src, case_dst, promote_piece, True)
+ 
+            else:
+                print("Usage: promote <src> <dst> <piece> (ex: promote a7 a8 q)") 
 
         elif cmd == "legal":
             self.afficher_coups_legaux()
@@ -427,17 +446,21 @@ class Client:
                 f"Commande inconnue: {cmd}. Tapez 'help' pour voir les commandes."
             )
 
-    def jouer_coup(self, case_src, case_dst):
+    def jouer_coup(self, case_src, case_dst, piece, promote):
         """joue un coup et l'envoie au serveur"""
         try:
-            move_uci = case_src + case_dst
-            move = chess.Move.from_uci(move_uci)
+            if promote:
+                move_uci = case_src + case_dst + piece
+                move = chess.Move.from_uci(move_uci)
+            else:    
+                move_uci = case_src + case_dst
+                move = chess.Move.from_uci(move_uci)
 
             if move not in self.board.legal_moves:
                 print(f"Coup illégal: {case_src} → {case_dst}")
                 return False
 
-            self.envoyer(f"play {case_src} {case_dst}")
+            self.envoyer(f"play {case_src} {case_dst}") if promote is False else self.envoyer(f"play {case_src} {case_dst} {piece}")
             reponse = self.attendre_reponse()
 
             if reponse == "OK":
@@ -458,6 +481,37 @@ class Client:
             print(f"Erreur lors du coup: {e}")
             return False
 
+    def jouer_promote(self, case_src, case_dst, piece):
+        try:
+            move_uci = case_src + case_dst + piece
+            move = chess.Move.from_uci(move_uci)
+
+            if move not in self.board.legal_moves:
+                print(f"Coup illégal: {case_src} → {case_dst}")
+                return False
+
+            self.envoyer(f"play {case_src} {case_dst} {piece}")
+            reponse = self.attendre_reponse()
+
+            if reponse == "OK":
+                self.board.push(move)
+                print(f"Vous avez joué: {case_src} → {case_dst}")
+                self.affiche_plateau()
+
+                if self.board.is_game_over():
+                    self.afficher_fin_partie()
+
+                return True
+            elif reponse and reponse.startswith("ERR"):
+                return False
+            else:
+                print("Timeout: pas de réponse du serveur.")
+                return False
+        except Exception as e:
+            print(f"Erreur lors du coup: {e}")
+            return False
+        
+    
     def demander_replay(self):
         """demande une revanche"""
         if self.en_partie:
