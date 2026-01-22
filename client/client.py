@@ -5,10 +5,11 @@ import chess
 from crypto.aes import ChiffrementAES
 from crypto.diffie_hellman import DiffieHellman
 
+
 class Client:
     """classe Client"""
 
-    def __init__(self, host="localhost", port=15002):
+    def __init__(self, host="localhost", port=15001):
         """Initialise le client
         Args:
             host (str): Adresse du serveur
@@ -29,8 +30,9 @@ class Client:
         self.derniere_reponse = None
         self.attente_reponse = False
         self.chiffrement = ChiffrementAES()
-        self.parametres = []
+        self.parametres = {}
         self.diffie_hellman = DiffieHellman()
+        self.cle_partagee_etablie = False
 
     def connecter(self):
         """se connecte au serveur"""
@@ -47,7 +49,9 @@ class Client:
             return True
 
         except Exception as e:
-            print(f"il ya une erreur inatendue, le client n'a pas reçu p et g : {e}")
+            print(
+                f"il ya une erreur inatendue, le client n'a pas reçu p et g : {e}"
+            )
             return False
 
     def envoyer_chiffrer(self, message):
@@ -96,7 +100,7 @@ class Client:
     def traiter_message(self, message):
         """traite les messages reçus du serveur"""
         parties = message.split()
-        print(parties)
+
         if not parties:
             return
         commande = parties[0]
@@ -134,27 +138,33 @@ class Client:
             print("Vous avez perdu par abandon.")
             self.en_partie = False
 
-        elif "SYNC" in commande:
-            parties = commande.split()
-            if len(parties) == 3 & parties != []:
-                print("Le client a bien reçu les param p et g")
-                self.parametres.append(parties[1:])
+        elif commande == "SYNC":
+            if len(parties) == 3:
+                p = int(parties[1])
+                g = int(parties[2])
 
-            secret = self.diffie_hellman.choisir_secret(self.parametres[0])
-            print(f"secret: {secret}")
-            clef_publique = self.diffie_hellman.calculer_clef_publique(self.parametres[1], secret, self.parametres[0])
-            print(f"clef pub du client: {clef_publique}")            
-            self.envoyer("SYNC"+clef_publique)
+                secret = self.diffie_hellman.choisir_secret(p)
 
-            if len(parties) == 2 & parties != []:
-                ligne_clef_publique_serveur = self.fichier.readline().strip()
+                clef_publique = self.diffie_hellman.calculer_clef_publique(
+                    g, secret, p)
+
+                self.parametres['p'] = p
+                self.parametres['g'] = g
+                self.parametres['secret'] = secret
+
+                self.envoyer(f"SYNC {clef_publique}")
+
+            elif len(parties) == 2:
+                ligne_clef_publique_serveur = parties[1]
+
                 clef_publique_serveur = int(ligne_clef_publique_serveur)
-                print(f"clef pub serveur: {clef_publique_serveur}")
 
-            clef_partagee = self.diffie_hellman.calculer_clef_partagee(
-            clef_publique_serveur, secret, self.parametres[0])
-            print(f"clef partage: {clef_partagee}")
-            self.chiffrement.set_clef(clef_partagee)
+                clef_partagee = self.diffie_hellman.calculer_clef_partagee(
+                    clef_publique_serveur, self.parametres['secret'],
+                    self.parametres['p'])
+
+                self.chiffrement.set_clef(clef_partagee)
+                self.cle_partagee_etablie = True
 
     def attendre_reponse(self, timeout=5):
         """attend une réponse du serveur avec un timeout"""
@@ -525,8 +535,23 @@ class Client:
             print("Pas de partie en cours.")
             return False
 
+    def attendre_cle_partagee(self, timeout=10):
+        """Attend que la clé partagée soit établie"""
+        debut = time.time()
+        while not self.cle_partagee_etablie and (time.time() -
+                                                 debut) < timeout:
+            time.sleep(0.1)
+        return self.cle_partagee_etablie
+
 
 if __name__ == "__main__":
     client = Client()
     if client.connecter():
-        client.lancer_client()
+        print("Connexion établie, échange de clés en cours...")
+        if client.attendre_cle_partagee():
+            print("Chiffrement initialisé avec succès!")
+            client.lancer_client()
+        else:
+            print("Timeout lors de l'échange de clés.")
+    else:
+        print("Impossible de se connecter au serveur.")
