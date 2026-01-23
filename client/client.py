@@ -417,7 +417,6 @@ class Client:
                 print("Usage: move <src> <dst> (ex: move e2 e4)")
         
         elif cmd == "promote":
-            print(len(parties))
             if len(parties) == 4:
                 case_src = parties[1]
                 case_dst = parties[2]
@@ -491,37 +490,6 @@ class Client:
         except Exception as e:
             print(f"Erreur lors du coup: {e}")
             return False
-
-    def jouer_promote(self, case_src, case_dst, piece):
-        try:
-            move_uci = case_src + case_dst + piece
-            move = chess.Move.from_uci(move_uci)
-
-            if move not in self.board.legal_moves:
-                print(f"Coup illégal: {case_src} → {case_dst}")
-                return False
-
-            self.envoyer(f"play {case_src} {case_dst} {piece}")
-            reponse = self.attendre_reponse()
-
-            if reponse == "OK":
-                self.board.push(move)
-                print(f"Vous avez joué: {case_src} → {case_dst}")
-                self.affiche_plateau()
-
-                if self.board.is_game_over():
-                    self.afficher_fin_partie()
-
-                return True
-            elif reponse and reponse.startswith("ERR"):
-                return False
-            else:
-                print("Timeout: pas de réponse du serveur.")
-                return False
-        except Exception as e:
-            print(f"Erreur lors du coup: {e}")
-            return False
-        
     
     def demander_replay(self):
         """demande une revanche"""
