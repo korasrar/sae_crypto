@@ -150,19 +150,32 @@ class Session(Thread):
         """
         play caseSrc caseDst : déplace une pièce
         Format: a3 a4
+        
+        play caseSrc caseDst piece : fait la promotion d'un pion
+        Format: a7 a8 q
         """
         if not self.en_partie:
             self.envoyer_erreur("Vous n'êtes pas dans une partie")
             return
-
-        case_source = args[0]
-        case_destination = args[1]
+        
+        #cas de la promotion
+        if len(args) >= 3:
+            case_source = args[0]    
+            case_destination = args[1]
+            promote_piece = args[2]
+        
+        else:
+            case_source = args[0]
+            case_destination = args[1]
 
         # Coups deja vérifier par le client
         self.envoyer_ok()
 
         if self.adversaire:
-            self.adversaire.envoyer(f"play {case_source} {case_destination}")
+            if len(args) >= 3:
+                self.adversaire.envoyer(f"play {case_source} {case_destination} {promote_piece}")
+            else:    
+                self.adversaire.envoyer(f"play {case_source} {case_destination}")
 
     def cmd_leave(self, args):
         """
