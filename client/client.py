@@ -109,11 +109,17 @@ class Client:
                 self.affiche_plateau()
 
         elif commande == "play":
-            if len(parties) >= 3:
+            if len(parties) == 3:
                 case_src = parties[1]
                 case_dst = parties[2]
-                self.appliquer_coup_adversaire(case_src, case_dst)
-
+                self.appliquer_coup_adversaire(case_src, case_dst, None, False)
+            else:
+                case_src = parties[1]
+                case_dst = parties[2]
+                promote_piece = parties[3]
+                self.appliquer_coup_adversaire(case_src, case_dst, promote_piece, True)
+                
+                
         elif commande == "win":
             print("Vous avez gagné! l'adversaire a abandonné... bouuuu")
             self.en_partie = False
@@ -171,11 +177,15 @@ class Client:
             print("Timeout: pas de réponse du serveur.")
             return False
 
-    def appliquer_coup_adversaire(self, case_src, case_dst):
+    def appliquer_coup_adversaire(self, case_src, case_dst, promote_piece, promote):
         """applique le coup de l'adversaire sur le plateau"""
         try:
-            move1 = case_src + case_dst
-            move = chess.Move.from_uci(move1)
+            if promote:
+                move_uci = case_src + case_dst + promote_piece
+                move = chess.Move.from_uci(move_uci)
+            else:    
+                move_uci = case_src + case_dst
+                move = chess.Move.from_uci(move_uci)
 
             if move in self.board.legal_moves:
                 self.board.push(move)
@@ -186,7 +196,7 @@ class Client:
                     self.afficher_fin_partie()
             else:
                 print(
-                    f"attention, il y a un coup illégal de l'adversaire: {move1}"
+                    f"attention, il y a un coup illégal de l'adversaire: {move_uci}"
                 )
         except Exception as e:
             print(f"erreur lors de l'application du coup: {e}")
@@ -407,7 +417,8 @@ class Client:
                 print("Usage: move <src> <dst> (ex: move e2 e4)")
         
         elif cmd == "promote":
-            if len(parties) >= 4:
+            print(len(parties))
+            if len(parties) == 4:
                 case_src = parties[1]
                 case_dst = parties[2]
                 promote_piece = parties[3]
@@ -417,7 +428,7 @@ class Client:
                 move_str = parties[1]
                 case_src = move_str[:2]  
                 case_dst = move_str[2:]
-                promote_piece = parties[3]  
+                promote_piece = parties[2]  
                 self.jouer_coup(case_src, case_dst, promote_piece, True)
  
             else:
