@@ -10,9 +10,19 @@ create table PARTIE(
     idJoueur1 varchar(15),
     idJoueur2 varchar(15),
     resultat varchar(25), 
-    coups text,
     foreign key idJoueur1 references JOUEUR(idJoueur),
     foreign key idJoueur2 references JOUEUR(idJoueur)
+);
+
+CREATE TABLE COUP (
+    idCoup int primary key AUTO_INCREMENT,
+    idPartie int,
+    idJoueur int,
+    notation(10) varchar(25), 
+    numeroCoup int,      
+    dateHeure date,
+    foreign key (idPartie) references PARTIE(idPartie),
+    foreign key (idJoueur) references JOUEUR(idJoueur)
 );
 
 create table STATISTIQUES(
