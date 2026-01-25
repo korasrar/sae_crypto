@@ -314,12 +314,10 @@ class Session(Thread):
 
         commande = parties[0].lower()
         arguments = parties[1:]
-        print(f"Commande: {commande}, Arguments: {arguments}")
 
         if commande in self.COMMANDES:
             nom_methode = self.COMMANDES[commande]
             methode = getattr(self, nom_methode)
-            print(f"Appel de la méthode: {nom_methode}")
             resultat = methode(arguments)
             return resultat is True
         else:
@@ -361,10 +359,7 @@ class Session(Thread):
             while True:
                 # méthode bloquante, on attend de recevoir une string
                 ligne = self.fichier.readline().strip()
-                print(f"Reçu (chiffré): {ligne}")
                 ligne = self.chiffrement.dechiffrer(ligne)
-                print(f"type ligne: {type(ligne)}")
-                print(f"Reçu (déchiffré): {ligne}")
 
                 if not ligne:
                     break
