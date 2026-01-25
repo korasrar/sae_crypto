@@ -4,6 +4,7 @@ import time
 import chess
 from crypto.aes import ChiffrementAES
 from crypto.diffie_hellman import DiffieHellman
+import ipaddress
 
 import chess.svg
 import pygame
@@ -13,7 +14,7 @@ import cairosvg
 class Client:
     """classe Client"""
 
-    def __init__(self, host="localhost", port=15002):
+    def __init__(self, host="", port=0):
         """Initialise le client
         Args:
             host (str): Adresse du serveur
@@ -447,6 +448,30 @@ class Client:
         print("\nLa partie est terminée.")
         pygame.quit()
         self.partie_trouvee = False
+    
+    def ask_config(self):
+        while True:
+            ip_host = input("Entrez l'adresse IP du serveur (ex: 192.168.1.10): ").strip()
+
+            if ip_host.lower() == "localhost":
+                self.host = "localhost"
+                break
+
+            try:
+                ipaddress.ip_address(ip_host)
+                self.host = ip_host
+                break
+            except ValueError:
+                print("Adresse IP invalide. Réessayez.")
+
+        while True:
+            port_str = input("Entrez le port du serveur: ").strip()
+            if not port_str.isdigit():
+                print("Port invalide (doit être un nombre). Réessayez.")
+                continue
+            self.port = int(port_str)
+            break
+            
 
     def traiter_commande_jeu(self, commande):
         """traite les commandes entrées pendant le jeu"""
@@ -620,6 +645,11 @@ class Client:
 
 if __name__ == "__main__":
     client = Client()
+    client.ask_config()
+    
+    
+    print(client.host)
+    print(client.port)
     if client.connecter():
         print("Connexion établie, échange de clés en cours...")
         if client.attendre_cle_partagee():
