@@ -7,7 +7,7 @@ from threading import Thread, Lock
 from requests import session
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from models import SessionLocal,Base, Joueur, Partie, Coup
+from models import SessionLocal,Base, Joueur, Partie, Coup, Statistiques
 
 joueurs_enregistres = {}
 joueurs_connectes = {}
@@ -90,68 +90,53 @@ class Session(Thread):
         self.envoyer(f"ERR {message}")
 
     def cmd_register(self, args):
-        """
-        register nomJoueur motDePasse : enregistre un nouveau joueur
-        - nomJoueur: 3-10 caractères, sans espace
-        - motDePasse: au moins 6 caractères
-        """
         if len(args) < 2:
             self.envoyer_erreur("Usage: register nomJoueur motDePasse")
             return
 
-        nom_joueur = args[0]
-        mot_de_passe = args[1]
+        nom_joueur, mot_de_passe = args[0], args[1]
 
-        if len(nom_joueur) < 3 or len(nom_joueur) > 10:
-            self.envoyer_erreur(
-                "Le nom du joueur doit avoir entre 3 et 10 caracteres")
+        existe_deja = self.db.query(Joueur).filter_by(pseudo=nom_joueur).first()
+        if existe_deja:
+            self.envoyer_erreur("Ce pseudo est déjà utilisé")
             return
 
-        if " " in nom_joueur:
-            self.envoyer_erreur(
-                "Le nom du joueur ne doit pas contenir d'espace")
-            return
-
-        if len(mot_de_passe) < 6:
-            self.envoyer_erreur(
-                "Le mot de passe doit avoir au moins 6 caracteres")
-            return
-
-        with verrou_joueurs:
-            if nom_joueur in joueurs_enregistres:
-                self.envoyer_erreur("Ce joueur existe deja")
-                return
-
-            joueurs_enregistres[nom_joueur] = mot_de_passe
-
-        self.envoyer_ok()
+        try:
+            nouveau_joueur = Joueur(pseudo=nom_joueur, mdp=mot_de_passe)
+            self.db.add(nouveau_joueur)
+            self.db.commit()
+            stats = Statistiques(joueurId=nouveau_joueur.idJoueur)
+            self.db.add(stats)
+            self.db.commit()
+            
+            self.envoyer_ok()
+        except Exception as e:
+            self.db.rollback()
+            self.envoyer_erreur(f"Erreur d'inscription: {e}")
 
     def cmd_connect(self, args):
-        """
-        connect nomJoueur motDePasse : demande de connexion du client
-        """
         if len(args) < 2:
             self.envoyer_erreur("Usage: connect nomJoueur motDePasse")
             return
 
-        nom_joueur = args[0]
-        mot_de_passe = args[1]
+        nom_joueur, mot_de_passe = args[0], args[1]
 
-        if nom_joueur in joueurs_connectes:
-            self.envoyer_erreur("Le joueur est déjà présent dans la partie")
+        joueur_db = self.db.query(Joueur).filter_by(pseudo=nom_joueur).first()
+
+        if not joueur_db or joueur_db.mdp != mot_de_passe:
+            self.envoyer_erreur("Identifiants incorrects")
             return
 
-        if nom_joueur not in joueurs_enregistres:
-            self.envoyer_erreur("Le nom du joueur n'est pas register")
-            return
-
-        if joueurs_enregistres[nom_joueur] != mot_de_passe:
-            self.envoyer_erreur("Le mot de passe n'est pas correct")
-            return
-
-        joueurs_connectes[nom_joueur] = mot_de_passe
-        self.nom_joueur = nom_joueur
-
+        with verrou_joueurs:
+            if nom_joueur in joueurs_connectes:
+                self.envoyer_erreur("Déjà connecté")
+                return
+            
+            
+            self.id_joueur_db = joueur_db.idJoueur
+            self.nom_joueur = nom_joueur
+            joueurs_connectes[nom_joueur] = self
+        
         self.envoyer_ok()
 
     def cmd_play(self, args):
@@ -168,12 +153,25 @@ class Session(Thread):
         notation = f"{case_source}{case_destination}"
         self.nb_coup += 1
 
-        # Coups deja vérifier par le client
-        self.envoyer_ok()
+        try:
+            # ENREGISTREMENT DANS LA BD
+            nouveau_coup = Coup(
+                idPartie=self.id_partie_bd,
+                idJoueur=self.id_joueur_db,
+                notation=notation,
+                numeroCoup=self.nb_coups
+            )
+            self.db.add(nouveau_coup)
+            self.db.commit()
 
-        if self.adversaire:
-            self.adversaire.envoyer(f"play {case_source} {case_destination}")
-            self.adversaire.nb_coups = self.nb_coups
+            self.envoyer_ok()
+
+            if self.adversaire:
+                self.adversaire.envoyer(f"play {case_source} {case_destination}")
+                self.adversaire.nb_coups = self.nb_coups
+        except Exception as e:
+            self.db.rollback()
+            print(f"Erreur SQL : {e}")
 
     def cmd_leave(self, args):
         """
@@ -182,6 +180,11 @@ class Session(Thread):
         if not self.en_partie:
             self.envoyer_erreur("Aucune partie en cours")
             return
+        
+        partie = self.db.query(Partie).get(self.id_partie_bd)
+        if partie:
+            partie.resultat = f"Victoire de {self.adversaire.nom_joueur} (abandon)"
+            self.db.commit()
 
         with verrou_joueurs:
             if self.adversaire:
@@ -274,6 +277,20 @@ class Session(Thread):
                 self.en_partie = True
                 session_adversaire.en_partie = True
 
+                try:
+                    nouvelle_partie = Partie(
+                        idJoueur1=session_adversaire.id_joueur_db, 
+                        idJoueur2=self.id_joueur_db
+                    )
+                    self.db.add(nouvelle_partie)
+                    self.db.commit()
+
+                    self.id_partie_bd = nouvelle_partie.idPartie
+                    session_adversaire.id_partie_bd = nouvelle_partie.idPartie
+                except Exception as e:
+                    self.db.rollback()
+                    print(f"Erreur création partie BD : {e}")
+
                 parties_actives[self] = session_adversaire
                 parties_actives[session_adversaire] = self
 
@@ -329,6 +346,14 @@ class Session(Thread):
             print(f"Erreur session: {e}")
         finally:
             self.nettoyer()
+
+    def enregistrer_resultat(self, resultat):
+        """Met à jour le résultat en BD et incrémente les stats"""
+        if self.id_partie_bd:
+            partie = self.db.query(Partie).get(self.id_partie_bd)
+            if partie:
+                partie.resultat = resultat
+                self.db.commit()
 
     def nettoyer(self):
         """Nettoie la session lors de la déconnexion"""

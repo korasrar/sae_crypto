@@ -18,7 +18,7 @@ CREATE TABLE COUP (
     idCoup int primary key AUTO_INCREMENT,
     idPartie int,
     idJoueur int,
-    notation(10), 
+    notation(10) varchar(25), 
     numeroCoup int,      
     dateHeure date,
     foreign key (idPartie) references PARTIE(idPartie),
