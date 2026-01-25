@@ -2,12 +2,19 @@ import socket
 from threading import Thread, Lock
 import time
 import chess
+from crypto.aes import ChiffrementAES
+from crypto.diffie_hellman import DiffieHellman
+import ipaddress
 
+import chess.svg
+import pygame
+from io import BytesIO
+import cairosvg
 
 class Client:
     """classe Client"""
 
-    def __init__(self, host="localhost", port=15001):
+    def __init__(self, host="", port=0):
         """Initialise le client
         Args:
             host (str): Adresse du serveur
@@ -27,6 +34,12 @@ class Client:
         self.board = chess.Board()
         self.derniere_reponse = None
         self.attente_reponse = False
+        self.chiffrement = ChiffrementAES()
+        self.parametres = {}
+        self.diffie_hellman = DiffieHellman()
+        self.cle_partagee_etablie = False
+        self.surface = None
+        self.screen = None
 
     def connecter(self):
         """se connecte au serveur"""
@@ -41,9 +54,23 @@ class Client:
             thread_ecoute.start()
 
             return True
+
         except Exception as e:
-            print(f"il ya une erreur inatendue : {e}")
+            print(
+                f"il ya une erreur inatendue, le client n'a pas reçu p et g : {e}"
+            )
             return False
+
+    def envoyer_chiffrer(self, message):
+        """envoie un message au serveur"""
+        try:
+            with self.verrou:
+                message_chiffre = self.chiffrement.chiffrer(message)
+                self.fichier.write(message_chiffre + "\n")
+                self.fichier.flush()
+        except Exception as e:
+            print(f"le client n'a pas pu envoyer le message: {e}")
+            self.connecte = False
 
     def envoyer(self, message):
         """envoie un message au serveur"""
@@ -79,7 +106,12 @@ class Client:
 
     def traiter_message(self, message):
         """traite les messages reçus du serveur"""
-        parties = message.split()
+        # si c'est None, la commande n'est pas chiffrer, donc c'est SYNC
+        if self.chiffrement.dechiffrer(message) is None:
+            parties = message.split()
+        else:
+            parties = self.chiffrement.dechiffrer(message).split()
+
         if not parties:
             return
         commande = parties[0]
@@ -104,11 +136,17 @@ class Client:
                 self.affiche_plateau()
 
         elif commande == "play":
-            if len(parties) >= 3:
+            if len(parties) == 3:
                 case_src = parties[1]
                 case_dst = parties[2]
-                self.appliquer_coup_adversaire(case_src, case_dst)
-
+                self.appliquer_coup_adversaire(case_src, case_dst, None, False)
+            else:
+                case_src = parties[1]
+                case_dst = parties[2]
+                promote_piece = parties[3]
+                self.appliquer_coup_adversaire(case_src, case_dst, promote_piece, True)
+                
+                
         elif commande == "win":
             print("Vous avez gagné! l'adversaire a abandonné... bouuuu")
             self.en_partie = False
@@ -116,6 +154,34 @@ class Client:
         elif commande == "lose":
             print("Vous avez perdu par abandon.")
             self.en_partie = False
+
+        elif commande == "SYNC":
+            if len(parties) == 3:
+                p = int(parties[1])
+                g = int(parties[2])
+
+                secret = self.diffie_hellman.choisir_secret(p)
+
+                clef_publique = self.diffie_hellman.calculer_clef_publique(
+                    g, secret, p)
+
+                self.parametres['p'] = p
+                self.parametres['g'] = g
+                self.parametres['secret'] = secret
+
+                self.envoyer(f"SYNC {clef_publique}")
+
+            elif len(parties) == 2:
+                ligne_clef_publique_serveur = parties[1]
+
+                clef_publique_serveur = int(ligne_clef_publique_serveur)
+
+                clef_partagee = self.diffie_hellman.calculer_clef_partagee(
+                    clef_publique_serveur, self.parametres['secret'],
+                    self.parametres['p'])
+
+                self.chiffrement.set_clef(clef_partagee)
+                self.cle_partagee_etablie = True
 
     def attendre_reponse(self, timeout=5):
         """attend une réponse du serveur avec un timeout"""
@@ -128,7 +194,7 @@ class Client:
 
     def register(self, nom_joueur, mot_de_passe):
         """enregistre un nouveau joueur"""
-        self.envoyer(f"register {nom_joueur} {mot_de_passe}")
+        self.envoyer_chiffrer(f"register {nom_joueur} {mot_de_passe}")
         reponse = self.attendre_reponse()
         if reponse == "OK":
             print("Enregistrement réussi.")
@@ -141,7 +207,7 @@ class Client:
 
     def login(self, nom_joueur, mot_de_passe):
         """se connecte avec un compte"""
-        self.envoyer(f"connect {nom_joueur} {mot_de_passe}")
+        self.envoyer_chiffrer(f"connect {nom_joueur} {mot_de_passe}")
         reponse = self.attendre_reponse()
         if reponse == "OK":
             self.nom_joueur = nom_joueur
@@ -155,7 +221,7 @@ class Client:
 
     def chercher_partie(self):
         """cherche une partie"""
-        self.envoyer("new")
+        self.envoyer_chiffrer("new")
         reponse = self.attendre_reponse()
         if reponse == "OK":
             print("Recherche de partie lancée...")
@@ -166,11 +232,15 @@ class Client:
             print("Timeout: pas de réponse du serveur.")
             return False
 
-    def appliquer_coup_adversaire(self, case_src, case_dst):
+    def appliquer_coup_adversaire(self, case_src, case_dst, promote_piece, promote):
         """applique le coup de l'adversaire sur le plateau"""
         try:
-            move1 = case_src + case_dst
-            move = chess.Move.from_uci(move1)
+            if promote:
+                move_uci = case_src + case_dst + promote_piece
+                move = chess.Move.from_uci(move_uci)
+            else:    
+                move_uci = case_src + case_dst
+                move = chess.Move.from_uci(move_uci)
 
             if move in self.board.legal_moves:
                 self.board.push(move)
@@ -181,7 +251,7 @@ class Client:
                     self.afficher_fin_partie()
             else:
                 print(
-                    f"attention, il y a un coup illégal de l'adversaire: {move1}"
+                    f"attention, il y a un coup illégal de l'adversaire: {move_uci}"
                 )
         except Exception as e:
             print(f"erreur lors de l'application du coup: {e}")
@@ -245,7 +315,7 @@ class Client:
     def abandonner_partie(self):
         """abandonne la partie en cours"""
         if self.en_partie:
-            self.envoyer("leave")
+            self.envoyer_chiffrer("leave")
             reponse = self.attendre_reponse()
             if reponse == "OK":
                 self.en_partie = False
@@ -341,6 +411,7 @@ class Client:
         print("\n" + "=" * 40)
         print("COMMANDES DISPONIBLES:")
         print("  [move] <src> <dst> : Jouer un coup (ex: move e2 e4)")
+        print("  [promote] <src> <dst> <piece> : Promouvoir un pion (ex: promote a7 e8 q)")
         print("  [legal]            : Afficher les coups légaux")
         print("  [board]            : Afficher le plateau")
         print("  [resign]           : Abandonner la partie")
@@ -358,13 +429,16 @@ class Client:
         if not self.partie_trouvee:
             print("La connexion a été perdue.")
             return
-
+        self.init_screen()        
         while self.en_partie and self.connecte:
             if self.est_mon_tour():
                 self.menu_en_jeu()
+                self.update_screen()
                 commande = input("\nC'est votre tour! Entrez une commande: "
                                  ).strip().lower()
                 self.traiter_commande_jeu(commande)
+                self.surface = self.board_to_surface(self.board)
+                self.update_screen()
             else:
                 print("\nC'est au tour de l'adversaire, veuillez patienter...")
                 while not self.est_mon_tour(
@@ -372,7 +446,32 @@ class Client:
                     time.sleep(0.3)
 
         print("\nLa partie est terminée.")
+        pygame.quit()
         self.partie_trouvee = False
+    
+    def ask_config(self):
+        while True:
+            ip_host = input("Entrez l'adresse IP du serveur (ex: 192.168.1.10): ").strip()
+
+            if ip_host.lower() == "localhost":
+                self.host = "localhost"
+                break
+
+            try:
+                ipaddress.ip_address(ip_host)
+                self.host = ip_host
+                break
+            except ValueError:
+                print("Adresse IP invalide. Réessayez.")
+
+        while True:
+            port_str = input("Entrez le port du serveur: ").strip()
+            if not port_str.isdigit():
+                print("Port invalide (doit être un nombre). Réessayez.")
+                continue
+            self.port = int(port_str)
+            break
+            
 
     def traiter_commande_jeu(self, commande):
         """traite les commandes entrées pendant le jeu"""
@@ -386,14 +485,32 @@ class Client:
             if len(parties) >= 3:
                 case_src = parties[1]
                 case_dst = parties[2]
-                self.jouer_coup(case_src, case_dst)
+                self.jouer_coup(case_src, case_dst, None, False)
+                
             elif len(parties) == 2 and len(parties[1]) == 4:
                 move_str = parties[1]
                 case_src = move_str[:2]
                 case_dst = move_str[2:]
-                self.jouer_coup(case_src, case_dst)
+                self.jouer_coup(case_src, case_dst, None, False)
             else:
                 print("Usage: move <src> <dst> (ex: move e2 e4)")
+        
+        elif cmd == "promote":
+            if len(parties) == 4:
+                case_src = parties[1]
+                case_dst = parties[2]
+                promote_piece = parties[3]
+                self.jouer_coup(case_src, case_dst, promote_piece, True)
+                
+            elif len(parties) == 3 and len(parties[1]) == 4:
+                move_str = parties[1]
+                case_src = move_str[:2]  
+                case_dst = move_str[2:]
+                promote_piece = parties[2]  
+                self.jouer_coup(case_src, case_dst, promote_piece, True)
+ 
+            else:
+                print("Usage: promote <src> <dst> <piece> (ex: promote a7 a8 q)") 
 
         elif cmd == "legal":
             self.afficher_coups_legaux()
@@ -418,17 +535,21 @@ class Client:
                 f"Commande inconnue: {cmd}. Tapez 'help' pour voir les commandes."
             )
 
-    def jouer_coup(self, case_src, case_dst):
+    def jouer_coup(self, case_src, case_dst, piece, promote):
         """joue un coup et l'envoie au serveur"""
         try:
-            move_uci = case_src + case_dst
-            move = chess.Move.from_uci(move_uci)
+            if promote:
+                move_uci = case_src + case_dst + piece
+                move = chess.Move.from_uci(move_uci)
+            else:    
+                move_uci = case_src + case_dst
+                move = chess.Move.from_uci(move_uci)
 
             if move not in self.board.legal_moves:
                 print(f"Coup illégal: {case_src} → {case_dst}")
                 return False
 
-            self.envoyer(f"play {case_src} {case_dst}")
+            self.envoyer_chiffrer(f"play {case_src} {case_dst}") if promote is False else self.envoyer(f"play {case_src} {case_dst} {piece}")
             reponse = self.attendre_reponse()
 
             if reponse == "OK":
@@ -448,11 +569,11 @@ class Client:
         except Exception as e:
             print(f"Erreur lors du coup: {e}")
             return False
-
+    
     def demander_replay(self):
         """demande une revanche"""
         if self.en_partie:
-            self.envoyer("replay")
+            self.envoyer_chiffrer("replay")
             reponse = self.attendre_reponse()
             if reponse == "OK":
                 print(
@@ -471,7 +592,7 @@ class Client:
     def quitter_partie(self):
         """quitte la partie en cours"""
         if self.en_partie:
-            self.envoyer("leave")
+            self.envoyer_chiffrer("leave")
             reponse = self.attendre_reponse()
             if reponse == "OK":
                 self.en_partie = False
@@ -485,9 +606,56 @@ class Client:
         else:
             print("Pas de partie en cours.")
             return False
+    
+    def attendre_cle_partagee(self, timeout=10):
+        """Attend que la clé partagée soit établie"""
+        debut = time.time()
+        while not self.cle_partagee_etablie and (time.time() -
+                                                 debut) < timeout:
+            time.sleep(0.1)
+        return self.cle_partagee_etablie
+        
+    def board_to_surface(self, board: chess.Board) -> pygame.image:
+        """Converti l'image svg du plateau en png, un format utilisable pour pygame
+           sources : 
+           #https://stackoverflow.com/questions/120584/svg-rendering-in-a-pygame-application-prior-to-pygame-2-0-pygame-did-not-suppo
+           #https://python-forum.io/thread-40976.html
 
+        Args:
+            board (chess.Board): le plateau de jeu
+
+        Returns:
+            pygame.image: l'image convertie en png chargée par pygame
+        """
+        svg_text = chess.svg.board(board)
+        png_bytes = cairosvg.svg2png(bytestring=svg_text.encode("utf-8"))
+        return pygame.image.load(BytesIO(png_bytes))
+    
+    def update_screen(self):
+        """Met à jour l'écran de pygame"""
+        self.surface = self.board_to_surface(self.board)
+        self.screen.blit(self.surface, (0, 0))
+        pygame.display.update()
+        
+    def init_screen(self):
+        """Initialisation de pygame et de l'écran"""
+        self.screen = pygame.display.set_mode((390, 390))
+        pygame.init()
+        
 
 if __name__ == "__main__":
     client = Client()
+    client.ask_config()
+    
+    
+    print(client.host)
+    print(client.port)
     if client.connecter():
-        client.lancer_client()
+        print("Connexion établie, échange de clés en cours...")
+        if client.attendre_cle_partagee():
+            print("Chiffrement initialisé avec succès!")
+            client.lancer_client()
+        else:
+            print("Timeout lors de l'échange de clés.")
+    else:
+        print("Impossible de se connecter au serveur.")

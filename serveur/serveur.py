@@ -8,6 +8,9 @@ from requests import session
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from models import SessionLocal,Base, Joueur, Partie, Coup, Statistiques
+from crypto.aes import ChiffrementAES
+from crypto.diffie_hellman import DiffieHellman
+import time
 
 joueurs_enregistres = {}
 joueurs_connectes = {}
@@ -23,6 +26,17 @@ class Serveur:
 
     def __init__(self):
         self.compteur = 0
+        self.diffie_hellman = DiffieHellman()
+        
+    def menu_démarrage(self):
+        while(True):
+            port = input("Entrez le port d'écoute du serveur: ")
+            if port.isdigit():
+                self.demarrer(int(port))
+                break
+            else:
+                print("Erreur, réessayez")
+            
 
     def demarrer(self, port):
         """permet de démarrer le serveur sur le port donné et d'attendre les connexions
@@ -39,7 +53,6 @@ class Serveur:
             client, adresse = socket_serveur.accept()
             print(f"Nouvelle connexion de {adresse}")
             session = Session(self, client)
-
 
 class Session(Thread):
     """Classe Session qui s'occupe de la communication avec un client
@@ -73,10 +86,18 @@ class Session(Thread):
         self.attend_replay = False
         self.id_partie_bd = None
         self.nb_coups = 0
+        self.chiffrement = ChiffrementAES()
         self.start()
 
     def envoyer(self, message):
         """Envoie un message au client"""
+        with self.verrou:
+            message_chiffre = self.chiffrement.chiffrer(message)
+            self.fichier.write(message_chiffre + "\n")
+            self.fichier.flush()
+
+    def envoyer_non_chiffre(self, message):
+        """Envoie un message non chiffré au client"""
         with self.verrou:
             self.fichier.write(message + "\n")
             self.fichier.flush()
@@ -143,6 +164,9 @@ class Session(Thread):
         """
         play caseSrc caseDst : déplace une pièce
         Format: a3 a4
+        
+        play caseSrc caseDst piece : fait la promotion d'un pion
+        Format: a7 a8 q
         """
         if not self.en_partie:
             self.envoyer_erreur("Vous n'êtes pas dans une partie")
@@ -152,6 +176,12 @@ class Session(Thread):
         case_destination = args[1]
         notation = f"{case_source}{case_destination}"
         self.nb_coup += 1
+        
+        #cas de la promotion
+        if len(args) >= 3:
+            case_source = args[0]    
+            case_destination = args[1]
+            promote_piece = args[2]
 
         try:
             # ENREGISTREMENT DANS LA BD
@@ -167,11 +197,14 @@ class Session(Thread):
             self.envoyer_ok()
 
             if self.adversaire:
-                self.adversaire.envoyer(f"play {case_source} {case_destination}")
-                self.adversaire.nb_coups = self.nb_coups
-        except Exception as e:
-            self.db.rollback()
-            print(f"Erreur SQL : {e}")
+               if len(args) >= 3:
+                   self.adversaire.envoyer(f"play {case_source} {case_destination} {promote_piece}")
+               else:    
+                   self.adversaire.envoyer(f"play {case_source} {case_destination}")
+                    self.adversaire.nb_coups = self.nb_coups
+          except Exception as e:
+              self.db.rollback()
+              print(f"Erreur SQL : {e}")
 
     def cmd_leave(self, args):
         """
@@ -328,11 +361,42 @@ class Session(Thread):
             self.envoyer_erreur(f"Commande inconnue: {commande}")
             return False
 
+    def etablir_connexion_securisee(self):
+        """
+        Établit une connexion sécurisée avec le client via Diffie-Hellman
+        et initialise le chiffrement AES
+        """
+        p, g = self.serveur.diffie_hellman.generer_public_params()
+
+        self.envoyer_non_chiffre(f"SYNC {p} {g}")
+
+        secret = self.serveur.diffie_hellman.choisir_secret(p)
+
+        clef_publique = self.serveur.diffie_hellman.calculer_clef_publique(
+            g, secret, p)
+
+        self.envoyer_non_chiffre(f"SYNC {clef_publique}")
+
+        ligne_clef_publique_client = self.fichier.readline().strip()
+        # recuperer la clef qui se trouve apres "SYNC "
+        ligne_clef_publique_client = ligne_clef_publique_client[5:]
+
+        clef_publique_client = int(ligne_clef_publique_client)
+
+        clef_partagee = self.serveur.diffie_hellman.calculer_clef_partagee(
+            clef_publique_client, secret, p)
+
+        self.chiffrement.set_clef(clef_partagee)
+        print(f"clef : {clef_partagee}")
+
     def run(self):
         try:
+            self.etablir_connexion_securisee()
+
             while True:
                 # méthode bloquante, on attend de recevoir une string
                 ligne = self.fichier.readline().strip()
+                ligne = self.chiffrement.dechiffrer(ligne)
 
                 if not ligne:
                     break
@@ -395,4 +459,4 @@ class GestionnaireBD:
 
 
 if __name__ == "__main__":
-    Serveur().demarrer(15001)
+    Serveur().menu_démarrage()
