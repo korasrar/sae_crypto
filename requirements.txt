@@ -2,6 +2,7 @@ cairocffi==1.7.1
 CairoSVG==2.8.2
 cffi==2.0.0
 chess==1.11.2
+cryptography==46.0.3
 cssselect2==0.8.0
 defusedxml==0.7.1
 pillow==12.1.0
