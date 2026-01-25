@@ -54,7 +54,7 @@ Puis sélectionnez l'option `1: Partie Locale` dans le menu.
 python -m serveur.serveur.py
 ```
 
-Le serveur démarre par défaut sur le port `15001`.
+Le serveur vous demandera de choisir un port sur lequel écouter
 
 #### 2. Connecter les clients
 
@@ -64,7 +64,8 @@ Sur chaque machine des joueurs :
 python -m client.client.py
 ```
 
-Le client se connecte par défaut à `localhost:15001`. Dans une future version, le choix serra donner, modifier dans les fichiers si besoin
+Le client vous demandera d'entrer l'adresse ip et le port du serveur sur lequel il veut se connecter (vous pouvez entrer localhost pour l'ip)
+Le port doit être celui sur lequel le serveur écoute
 
 ## 🎯 Commandes du jeu
 
