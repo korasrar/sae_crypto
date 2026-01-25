@@ -22,6 +22,16 @@ class Serveur:
     def __init__(self):
         self.compteur = 0
         self.diffie_hellman = DiffieHellman()
+        
+    def menu_démarrage(self):
+        while(True):
+            port = input("Entrez le port d'écoute du serveur: ")
+            if port.isdigit():
+                self.demarrer(int(port))
+                break
+            else:
+                print("Erreur, réessayez")
+            
 
     def demarrer(self, port):
         """permet de démarrer le serveur sur le port donné et d'attendre les connexions
@@ -400,4 +410,4 @@ class Session(Thread):
 
 
 if __name__ == "__main__":
-    Serveur().demarrer(15002)
+    Serveur().menu_démarrage()
