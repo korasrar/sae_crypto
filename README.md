@@ -66,6 +66,7 @@ python -m client.client.py
 
 Le client vous demandera d'entrer l'adresse ip et le port du serveur sur lequel il veut se connecter (vous pouvez entrer localhost pour l'ip)
 Le port doit être celui sur lequel le serveur écoute
+Lorsque vous allez lancer une partie en ligne, l'interface graphique va apparaitre si un message apparait comme quoi les fenêtre ne répondent pas ne les fermez pas et cliquez sur attendre dès votre premier mouvement ou celui de l'adversaire, les fenêtre vont se mettre à jour.
 
 ## 🎯 Commandes du jeu
 
