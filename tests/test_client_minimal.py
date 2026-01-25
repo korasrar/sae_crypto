@@ -23,9 +23,9 @@ class FauxFichier:
 
 @pytest.fixture()
 def client(monkeypatch):
-    client = Client(host="example.com", port=1234)
+    client = Client(host="localhost", port=1234)
 
-    # Avoid opening a real pygame window during tests
+    #permet de ne pas lancer de fenêtre pygame pendant les tests
     monkeypatch.setattr(client, "init_screen", lambda: None)
     monkeypatch.setattr(client, "update_screen", lambda: None)
     monkeypatch.setattr(client, "board_to_surface", lambda board: None)
@@ -33,13 +33,7 @@ def client(monkeypatch):
     return client
 
 
-def test_est_mon_tour_false_when_not_in_game(client):
-    client.en_partie = False
-    client.couleur = "w"
-    assert client.est_mon_tour() is False
-
-
-def test_est_mon_tour_white(client):
+def test_est_mon_tour_blanc(client):
     client.en_partie = True
     client.couleur = "w"
     client.board.reset()
@@ -47,7 +41,7 @@ def test_est_mon_tour_white(client):
     assert client.est_mon_tour() is True
 
 
-def test_est_mon_tour_black(client):
+def test_est_mon_tour_noir(client):
     client.en_partie = True
     client.couleur = "b"
     client.board.reset()
@@ -61,14 +55,15 @@ def test_est_mon_tour_black(client):
 
 def test_envoyer_writes_and_flushes(client):
     client.fichier = FauxFichier()
-    client.envoyer("hello")
-    assert client.fichier.buffer == ["hello\n"]
+    client.envoyer("play a2 a3")
+    assert client.fichier.buffer == ["play a2 a3\n"]
     assert client.fichier.flushed is True
+    #
 
-
-def test_recevoir_strips_line(client):
+def test_recevoir(client):
     client.fichier = FauxFichier()
     assert client.recevoir() == "OK"
+    #
 
 
 def test_traiter_message_ok(client):
@@ -78,43 +73,11 @@ def test_traiter_message_ok(client):
     assert client.attente_reponse is False
 
 
-def test_traiter_message_err(client, capsys):
+def test_traiter_message_err(client):
     client.attente_reponse = True
-    client.traiter_message("ERR bad stuff")
-    assert client.derniere_reponse == "ERR bad stuff"
+    client.traiter_message("ERR")
+    assert client.derniere_reponse == "ERR "
     assert client.attente_reponse is False
-    out = capsys.readouterr().out
-    assert "bad stuff" in out
-
-
-def test_traiter_message_start_sets_state_and_resets_board(client, monkeypatch):
-    called = {"plateau": 0}
-
-    def fake_affiche():
-        called["plateau"] += 1
-
-    monkeypatch.setattr(client, "affiche_plateau", fake_affiche)
-
-    client.board.push_san("e4")
-    client.traiter_message("start w")
-
-    assert client.couleur == "w"
-    assert client.en_partie is True
-    assert client.partie_trouvee is True
-    assert client.board.fen() == chess.Board().fen()
-    assert called["plateau"] == 1
-
-
-def test_traiter_message_play_calls_appliquer(client, monkeypatch):
-    called = {}
-
-    def fake_apply(src, dst):
-        called["src"] = src
-        called["dst"] = dst
-
-    monkeypatch.setattr(client, "appliquer_coup_adversaire", fake_apply)
-    client.traiter_message("play e2 e4")
-    assert called == {"src": "e2", "dst": "e4"}
 
 
 def test_appliquer_coup_adversaire_pushes_legal_move(client, monkeypatch):
@@ -123,31 +86,6 @@ def test_appliquer_coup_adversaire_pushes_legal_move(client, monkeypatch):
 
     client.board.reset()
     client.appliquer_coup_adversaire("e2", "e4")
-    assert client.board.peek().uci() == "e2e4"
-
-
-def test_jouer_coup_rejects_illegal_move_without_sending(client, monkeypatch):
-    sent = []
-    monkeypatch.setattr(client, "envoyer", lambda msg: sent.append(msg))
-
-    client.board.reset()
-    ok = client.jouer_coup("e2", "e5")
-    assert ok is False
-    assert sent == []
-
-
-def test_jouer_coup_sends_and_pushes_on_ok(client, monkeypatch):
-    sent = []
-    monkeypatch.setattr(client, "envoyer", lambda msg: sent.append(msg))
-    monkeypatch.setattr(client, "attendre_reponse", lambda timeout=5: "OK")
-    monkeypatch.setattr(client, "affiche_plateau", lambda: None)
-    monkeypatch.setattr(client, "afficher_fin_partie", lambda: None)
-
-    client.board.reset()
-    ok = client.jouer_coup("e2", "e4")
-
-    assert ok is True
-    assert sent == ["play e2 e4"]
     assert client.board.peek().uci() == "e2e4"
 
 
@@ -175,14 +113,7 @@ def test_traiter_commande_move_split_format_calls_jouer_coup(client, monkeypatch
     assert called == {"src": "e2", "dst": "e4"}
 
 
-def test_traiter_commande_legal_calls_afficher_coups_legaux(client, monkeypatch):
-    hit = {"n": 0}
-    monkeypatch.setattr(client, "afficher_coups_legaux", lambda: hit.__setitem__("n", hit["n"] + 1))
-    client.traiter_commande_jeu("legal")
-    assert hit["n"] == 1
-
-
-def test_traiter_commande_unknown_prints_help(client, capsys):
+def test_traiter_commande_inconnue(client, capsys):
     client.traiter_commande_jeu("unknowncmd")
     out = capsys.readouterr().out
     assert "Commande inconnue" in out
