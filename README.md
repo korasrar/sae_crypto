@@ -79,25 +79,47 @@ Les coups doivent être entrés au format UCI (Universal Chess Interface) :
 
 | Commande | Description |
 |----------|-------------|
-| `register <nom> <mdp>` | Créer un nouveau compte (nom: 3-10 caractères, mdp: 6+ caractères) |
+| `register <nom> <mdp>` | Créer un nouveau compte |
 | `connect <nom> <mdp>` | Se connecter à un compte existant |
-| `play` | Rejoindre la file d'attente pour une partie |
-| `leave` | Quitter la file d'attente |
-| `quit` | Se déconnecter |
+| `new` | Chercher une nouvelle partie (mise en file d'attente) |
+| `leave` | Abandonner / quitter la partie en cours |
 | `replay` | Demander une revanche |
-| `new` | Chercher une nouvelle partie |
+
+### Commandes en partie (quand c'est votre tour)
+
+| Commande | Description |
+|----------|-------------|
+| `move <src> <dst>` | Jouer un coup (ex: `move e2 e4`) |
+| `move <src><dst>` | Variante compacte (ex: `move e2e4`) |
+| `promote <src> <dst> <piece>` | Promotion (ex: `promote a7 a8 q`) |
+| `promote <src><dst> <piece>` | Variante compacte (ex: `promote a7a8 q`) |
+| `legal` | Afficher les coups légaux |
+| `board` | Afficher le plateau |
+| `resign` | Abandonner la partie |
+| `replay` | Demander une revanche |
+| `quit` | Quitter la partie |
+| `help` | Ré-afficher l'aide |
 
 ## 📁 Structure du projet
 
 ```
 sae_crypto/
 ├── chess/
-│   └── game.py         # Logique du jeu et menu principal
+│   ├── game.py          # Logique du jeu et menu principal
+│   └── display_game.py  # Affichage (console)
 ├── client/
 │   └── client.py       # Client réseau
+├── crypto/
+│   ├── __init__.py
+│   ├── aes.py
+│   └── diffie_hellman.py
 ├── serveur/
 │   └── serveur.py      # Serveur multijoueur
 ├── BD.sql              # Schéma de la base de données
+├── echecs.db            # Base de données SQLite
+├── models.py            # Modèles SQLAlchemy
+├── tests/
+│   └── test_client_minimal.py
 ├── requirements.txt    # Dépendances Python
 └── README.md
 ```
