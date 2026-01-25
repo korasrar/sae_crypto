@@ -5,6 +5,10 @@ import chess
 from crypto.aes import ChiffrementAES
 from crypto.diffie_hellman import DiffieHellman
 
+import chess.svg
+import pygame
+from io import BytesIO
+import cairosvg
 
 class Client:
     """classe Client"""
@@ -33,6 +37,8 @@ class Client:
         self.parametres = {}
         self.diffie_hellman = DiffieHellman()
         self.cle_partagee_etablie = False
+        self.surface = None
+        self.screen = None
 
     def connecter(self):
         """se connecte au serveur"""
@@ -411,13 +417,16 @@ class Client:
         if not self.partie_trouvee:
             print("La connexion a été perdue.")
             return
-
+        self.init_screen()        
         while self.en_partie and self.connecte:
             if self.est_mon_tour():
                 self.menu_en_jeu()
+                self.update_screen()
                 commande = input("\nC'est votre tour! Entrez une commande: "
                                  ).strip().lower()
                 self.traiter_commande_jeu(commande)
+                self.surface = self.board_to_surface(self.board)
+                self.update_screen()
             else:
                 print("\nC'est au tour de l'adversaire, veuillez patienter...")
                 while not self.est_mon_tour(
@@ -425,6 +434,7 @@ class Client:
                     time.sleep(0.3)
 
         print("\nLa partie est terminée.")
+        pygame.quit()
         self.partie_trouvee = False
 
     def traiter_commande_jeu(self, commande):
@@ -538,7 +548,7 @@ class Client:
         else:
             print("Pas de partie en cours.")
             return False
-
+    
     def attendre_cle_partagee(self, timeout=10):
         """Attend que la clé partagée soit établie"""
         debut = time.time()
@@ -546,7 +556,34 @@ class Client:
                                                  debut) < timeout:
             time.sleep(0.1)
         return self.cle_partagee_etablie
+        
+    def board_to_surface(self, board: chess.Board) -> pygame.image:
+        """Converti l'image svg du plateau en png, un format utilisable pour pygame
+           sources : 
+           #https://stackoverflow.com/questions/120584/svg-rendering-in-a-pygame-application-prior-to-pygame-2-0-pygame-did-not-suppo
+           #https://python-forum.io/thread-40976.html
 
+        Args:
+            board (chess.Board): le plateau de jeu
+
+        Returns:
+            pygame.image: l'image convertie en png chargée par pygame
+        """
+        svg_text = chess.svg.board(board)
+        png_bytes = cairosvg.svg2png(bytestring=svg_text.encode("utf-8"))
+        return pygame.image.load(BytesIO(png_bytes))
+    
+    def update_screen(self):
+        """Met à jour l'écran de pygame"""
+        self.surface = self.board_to_surface(self.board)
+        self.screen.blit(self.surface, (0, 0))
+        pygame.display.update()
+        
+    def init_screen(self):
+        """Initialisation de pygame et de l'écran"""
+        self.screen = pygame.display.set_mode((390, 390))
+        pygame.init()
+        
 
 if __name__ == "__main__":
     client = Client()
