@@ -3,6 +3,9 @@ Module Server et Session pour la sae_crypto
 """
 import socket
 from threading import Thread, Lock
+from crypto.aes import ChiffrementAES
+from crypto.diffie_hellman import DiffieHellman
+import time
 
 joueurs_enregistres = {}
 joueurs_connectes = {}
@@ -18,6 +21,7 @@ class Serveur:
 
     def __init__(self):
         self.compteur = 0
+        self.diffie_hellman = DiffieHellman()
 
     def demarrer(self, port):
         """permet de démarrer le serveur sur le port donné et d'attendre les connexions
@@ -34,7 +38,6 @@ class Serveur:
             client, adresse = socket_serveur.accept()
             print(f"Nouvelle connexion de {adresse}")
             session = Session(self, client)
-
 
 class Session(Thread):
     """Classe Session qui s'occupe de la communication avec un client
@@ -65,10 +68,18 @@ class Session(Thread):
         self.adversaire = None
         self.couleur = None  # 'w' ou 'b'
         self.attend_replay = False
+        self.chiffrement = ChiffrementAES()
         self.start()
 
     def envoyer(self, message):
         """Envoie un message au client"""
+        with self.verrou:
+            message_chiffre = self.chiffrement.chiffrer(message)
+            self.fichier.write(message_chiffre + "\n")
+            self.fichier.flush()
+
+    def envoyer_non_chiffre(self, message):
+        """Envoie un message non chiffré au client"""
         with self.verrou:
             self.fichier.write(message + "\n")
             self.fichier.flush()
@@ -290,21 +301,57 @@ class Session(Thread):
 
         commande = parties[0].lower()
         arguments = parties[1:]
+        print(f"Commande: {commande}, Arguments: {arguments}")
 
         if commande in self.COMMANDES:
             nom_methode = self.COMMANDES[commande]
             methode = getattr(self, nom_methode)
+            print(f"Appel de la méthode: {nom_methode}")
             resultat = methode(arguments)
             return resultat is True
         else:
             self.envoyer_erreur(f"Commande inconnue: {commande}")
             return False
 
+    def etablir_connexion_securisee(self):
+        """
+        Établit une connexion sécurisée avec le client via Diffie-Hellman
+        et initialise le chiffrement AES
+        """
+        p, g = self.serveur.diffie_hellman.generer_public_params()
+
+        self.envoyer_non_chiffre(f"SYNC {p} {g}")
+
+        secret = self.serveur.diffie_hellman.choisir_secret(p)
+
+        clef_publique = self.serveur.diffie_hellman.calculer_clef_publique(
+            g, secret, p)
+
+        self.envoyer_non_chiffre(f"SYNC {clef_publique}")
+
+        ligne_clef_publique_client = self.fichier.readline().strip()
+        # recuperer la clef qui se trouve apres "SYNC "
+        ligne_clef_publique_client = ligne_clef_publique_client[5:]
+
+        clef_publique_client = int(ligne_clef_publique_client)
+
+        clef_partagee = self.serveur.diffie_hellman.calculer_clef_partagee(
+            clef_publique_client, secret, p)
+
+        self.chiffrement.set_clef(clef_partagee)
+        print(f"clef : {clef_partagee}")
+
     def run(self):
         try:
+            self.etablir_connexion_securisee()
+
             while True:
                 # méthode bloquante, on attend de recevoir une string
                 ligne = self.fichier.readline().strip()
+                print(f"Reçu (chiffré): {ligne}")
+                ligne = self.chiffrement.dechiffrer(ligne)
+                print(f"type ligne: {type(ligne)}")
+                print(f"Reçu (déchiffré): {ligne}")
 
                 if not ligne:
                     break
@@ -345,4 +392,4 @@ class Session(Thread):
 
 
 if __name__ == "__main__":
-    Serveur().demarrer(15001)
+    Serveur().demarrer(15002)
