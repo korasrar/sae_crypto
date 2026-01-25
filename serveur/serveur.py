@@ -4,10 +4,7 @@ Module Server et Session pour la sae_crypto
 import socket
 import sqlite3
 from threading import Thread, Lock
-from requests import session
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from models import SessionLocal,Base, Joueur, Partie, Coup, Statistiques
+from models import SessionLocal,init_db, Joueur, Partie, Coup, Statistiques
 from crypto.aes import ChiffrementAES
 from crypto.diffie_hellman import DiffieHellman
 import time
@@ -27,6 +24,7 @@ class Serveur:
     def __init__(self):
         self.compteur = 0
         self.diffie_hellman = DiffieHellman()
+        init_db()
         
     def menu_démarrage(self):
         while(True):
@@ -175,7 +173,7 @@ class Session(Thread):
         case_source= args[0]
         case_destination = args[1]
         notation = f"{case_source}{case_destination}"
-        self.nb_coup += 1
+        self.nb_coups += 1
         
         #cas de la promotion
         if len(args) >= 3:
@@ -200,11 +198,11 @@ class Session(Thread):
                if len(args) >= 3:
                    self.adversaire.envoyer(f"play {case_source} {case_destination} {promote_piece}")
                else:    
-                   self.adversaire.envoyer(f"play {case_source} {case_destination}")
+                    self.adversaire.envoyer(f"play {case_source} {case_destination}")
                     self.adversaire.nb_coups = self.nb_coups
-          except Exception as e:
-              self.db.rollback()
-              print(f"Erreur SQL : {e}")
+        except Exception as e:
+            self.db.rollback()
+            print(f"Erreur SQL : {e}")
 
     def cmd_leave(self, args):
         """
