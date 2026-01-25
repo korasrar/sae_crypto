@@ -51,7 +51,7 @@ Puis sélectionnez l'option `1: Partie Locale` dans le menu.
 #### 1. Démarrer le serveur
 
 ```bash
-python serveur/serveur.py
+python -m serveur.serveur.py
 ```
 
 Le serveur démarre par défaut sur le port `15001`.
@@ -61,7 +61,7 @@ Le serveur démarre par défaut sur le port `15001`.
 Sur chaque machine des joueurs :
 
 ```bash
-python client/client.py
+python -m client.client.py
 ```
 
 Le client se connecte par défaut à `localhost:15001`. Dans une future version, le choix serra donner, modifier dans les fichiers si besoin
@@ -112,17 +112,12 @@ sae_crypto/
 Le fichier `BD.sql` contient le schéma pour stocker :
 - **JOUEUR** : Informations des joueurs (pseudo, mot de passe)
 - **PARTIE** : Historique des parties jouées
+- **COUP** : Informations d'un coup
 - **STATISTIQUES** : Stats des joueurs (victoires, défaites, nulles)
 
 ## 🛠️ Configuration
 
-### Port du serveur
-
-Par défaut, le serveur écoute sur le port `15001`. Pour le modifier, changez le paramètre dans l'appel de `demarrer()` dans `serveur/serveur.py`.
-
-### Adresse du client
-
-Par défaut, le client se connecte à `localhost:15001`. Modifiez les paramètres `host` et `port` dans le constructeur de la classe `Client` dans `client/client.py`.
+- Les informations du **serveur** et du **client** sont demandé au lancement du jeu
 
 ## 📖 Documentation / Sources
 

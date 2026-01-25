@@ -2,7 +2,12 @@
 Module Server et Session pour la sae_crypto
 """
 import socket
+import sqlite3
 from threading import Thread, Lock
+from models import SessionLocal,init_db, Joueur, Partie, Coup, Statistiques
+from crypto.aes import ChiffrementAES
+from crypto.diffie_hellman import DiffieHellman
+import time
 
 joueurs_enregistres = {}
 joueurs_connectes = {}
@@ -18,6 +23,18 @@ class Serveur:
 
     def __init__(self):
         self.compteur = 0
+        self.diffie_hellman = DiffieHellman()
+        init_db()
+        
+    def menu_démarrage(self):
+        while(True):
+            port = input("Entrez le port d'écoute du serveur: ")
+            if port.isdigit():
+                self.demarrer(int(port))
+                break
+            else:
+                print("Erreur, réessayez")
+            
 
     def demarrer(self, port):
         """permet de démarrer le serveur sur le port donné et d'attendre les connexions
@@ -34,7 +51,6 @@ class Serveur:
             client, adresse = socket_serveur.accept()
             print(f"Nouvelle connexion de {adresse}")
             session = Session(self, client)
-
 
 class Session(Thread):
     """Classe Session qui s'occupe de la communication avec un client
@@ -60,15 +76,26 @@ class Session(Thread):
         self.socket = sock
         self.fichier = sock.makefile(mode="rw")
         self.verrou = Lock()
+        self.db = SessionLocal()
         self.nom_joueur = None
         self.en_partie = False
         self.adversaire = None
         self.couleur = None  # 'w' ou 'b'
         self.attend_replay = False
+        self.id_partie_bd = None
+        self.nb_coups = 0
+        self.chiffrement = ChiffrementAES()
         self.start()
 
     def envoyer(self, message):
         """Envoie un message au client"""
+        with self.verrou:
+            message_chiffre = self.chiffrement.chiffrer(message)
+            self.fichier.write(message_chiffre + "\n")
+            self.fichier.flush()
+
+    def envoyer_non_chiffre(self, message):
+        """Envoie un message non chiffré au client"""
         with self.verrou:
             self.fichier.write(message + "\n")
             self.fichier.flush()
@@ -82,87 +109,100 @@ class Session(Thread):
         self.envoyer(f"ERR {message}")
 
     def cmd_register(self, args):
-        """
-        register nomJoueur motDePasse : enregistre un nouveau joueur
-        - nomJoueur: 3-10 caractères, sans espace
-        - motDePasse: au moins 6 caractères
-        """
         if len(args) < 2:
             self.envoyer_erreur("Usage: register nomJoueur motDePasse")
             return
 
-        nom_joueur = args[0]
-        mot_de_passe = args[1]
+        nom_joueur, mot_de_passe = args[0], args[1]
 
-        if len(nom_joueur) < 3 or len(nom_joueur) > 10:
-            self.envoyer_erreur(
-                "Le nom du joueur doit avoir entre 3 et 10 caracteres")
+        existe_deja = self.db.query(Joueur).filter_by(pseudo=nom_joueur).first()
+        if existe_deja:
+            self.envoyer_erreur("Ce pseudo est déjà utilisé")
             return
 
-        if " " in nom_joueur:
-            self.envoyer_erreur(
-                "Le nom du joueur ne doit pas contenir d'espace")
-            return
-
-        if len(mot_de_passe) < 6:
-            self.envoyer_erreur(
-                "Le mot de passe doit avoir au moins 6 caracteres")
-            return
-
-        with verrou_joueurs:
-            if nom_joueur in joueurs_enregistres:
-                self.envoyer_erreur("Ce joueur existe deja")
-                return
-
-            joueurs_enregistres[nom_joueur] = mot_de_passe
-
-        self.envoyer_ok()
+        try:
+            nouveau_joueur = Joueur(pseudo=nom_joueur, mdp=mot_de_passe)
+            self.db.add(nouveau_joueur)
+            self.db.commit()
+            stats = Statistiques(joueurId=nouveau_joueur.idJoueur)
+            self.db.add(stats)
+            self.db.commit()
+            
+            self.envoyer_ok()
+        except Exception as e:
+            self.db.rollback()
+            self.envoyer_erreur(f"Erreur d'inscription: {e}")
 
     def cmd_connect(self, args):
-        """
-        connect nomJoueur motDePasse : demande de connexion du client
-        """
         if len(args) < 2:
             self.envoyer_erreur("Usage: connect nomJoueur motDePasse")
             return
 
-        nom_joueur = args[0]
-        mot_de_passe = args[1]
+        nom_joueur, mot_de_passe = args[0], args[1]
 
-        if nom_joueur in joueurs_connectes:
-            self.envoyer_erreur("Le joueur est déjà présent dans la partie")
+        joueur_db = self.db.query(Joueur).filter_by(pseudo=nom_joueur).first()
+
+        if not joueur_db or joueur_db.mdp != mot_de_passe:
+            self.envoyer_erreur("Identifiants incorrects")
             return
 
-        if nom_joueur not in joueurs_enregistres:
-            self.envoyer_erreur("Le nom du joueur n'est pas register")
-            return
-
-        if joueurs_enregistres[nom_joueur] != mot_de_passe:
-            self.envoyer_erreur("Le mot de passe n'est pas correct")
-            return
-
-        joueurs_connectes[nom_joueur] = mot_de_passe
-        self.nom_joueur = nom_joueur
-
+        with verrou_joueurs:
+            if nom_joueur in joueurs_connectes:
+                self.envoyer_erreur("Déjà connecté")
+                return
+            
+            
+            self.id_joueur_db = joueur_db.idJoueur
+            self.nom_joueur = nom_joueur
+            joueurs_connectes[nom_joueur] = self
+        
         self.envoyer_ok()
 
     def cmd_play(self, args):
         """
         play caseSrc caseDst : déplace une pièce
         Format: a3 a4
+        
+        play caseSrc caseDst piece : fait la promotion d'un pion
+        Format: a7 a8 q
         """
         if not self.en_partie:
             self.envoyer_erreur("Vous n'êtes pas dans une partie")
             return
 
-        case_source = args[0]
+        case_source= args[0]
         case_destination = args[1]
+        notation = f"{case_source}{case_destination}"
+        self.nb_coups += 1
+        
+        #cas de la promotion
+        if len(args) >= 3:
+            case_source = args[0]    
+            case_destination = args[1]
+            promote_piece = args[2]
 
-        # Coups deja vérifier par le client
-        self.envoyer_ok()
+        try:
+            # ENREGISTREMENT DANS LA BD
+            nouveau_coup = Coup(
+                idPartie=self.id_partie_bd,
+                idJoueur=self.id_joueur_db,
+                notation=notation,
+                numeroCoup=self.nb_coups
+            )
+            self.db.add(nouveau_coup)
+            self.db.commit()
 
-        if self.adversaire:
-            self.adversaire.envoyer(f"play {case_source} {case_destination}")
+            self.envoyer_ok()
+
+            if self.adversaire:
+               if len(args) >= 3:
+                   self.adversaire.envoyer(f"play {case_source} {case_destination} {promote_piece}")
+               else:    
+                    self.adversaire.envoyer(f"play {case_source} {case_destination}")
+                    self.adversaire.nb_coups = self.nb_coups
+        except Exception as e:
+            self.db.rollback()
+            print(f"Erreur SQL : {e}")
 
     def cmd_leave(self, args):
         """
@@ -171,6 +211,11 @@ class Session(Thread):
         if not self.en_partie:
             self.envoyer_erreur("Aucune partie en cours")
             return
+        
+        partie = self.db.query(Partie).get(self.id_partie_bd)
+        if partie:
+            partie.resultat = f"Victoire de {self.adversaire.nom_joueur} (abandon)"
+            self.db.commit()
 
         with verrou_joueurs:
             if self.adversaire:
@@ -263,6 +308,20 @@ class Session(Thread):
                 self.en_partie = True
                 session_adversaire.en_partie = True
 
+                try:
+                    nouvelle_partie = Partie(
+                        idJoueur1=session_adversaire.id_joueur_db, 
+                        idJoueur2=self.id_joueur_db
+                    )
+                    self.db.add(nouvelle_partie)
+                    self.db.commit()
+
+                    self.id_partie_bd = nouvelle_partie.idPartie
+                    session_adversaire.id_partie_bd = nouvelle_partie.idPartie
+                except Exception as e:
+                    self.db.rollback()
+                    print(f"Erreur création partie BD : {e}")
+
                 parties_actives[self] = session_adversaire
                 parties_actives[session_adversaire] = self
 
@@ -300,11 +359,42 @@ class Session(Thread):
             self.envoyer_erreur(f"Commande inconnue: {commande}")
             return False
 
+    def etablir_connexion_securisee(self):
+        """
+        Établit une connexion sécurisée avec le client via Diffie-Hellman
+        et initialise le chiffrement AES
+        """
+        p, g = self.serveur.diffie_hellman.generer_public_params()
+
+        self.envoyer_non_chiffre(f"SYNC {p} {g}")
+
+        secret = self.serveur.diffie_hellman.choisir_secret(p)
+
+        clef_publique = self.serveur.diffie_hellman.calculer_clef_publique(
+            g, secret, p)
+
+        self.envoyer_non_chiffre(f"SYNC {clef_publique}")
+
+        ligne_clef_publique_client = self.fichier.readline().strip()
+        # recuperer la clef qui se trouve apres "SYNC "
+        ligne_clef_publique_client = ligne_clef_publique_client[5:]
+
+        clef_publique_client = int(ligne_clef_publique_client)
+
+        clef_partagee = self.serveur.diffie_hellman.calculer_clef_partagee(
+            clef_publique_client, secret, p)
+
+        self.chiffrement.set_clef(clef_partagee)
+        print(f"clef : {clef_partagee}")
+
     def run(self):
         try:
+            self.etablir_connexion_securisee()
+
             while True:
                 # méthode bloquante, on attend de recevoir une string
                 ligne = self.fichier.readline().strip()
+                ligne = self.chiffrement.dechiffrer(ligne)
 
                 if not ligne:
                     break
@@ -318,6 +408,14 @@ class Session(Thread):
             print(f"Erreur session: {e}")
         finally:
             self.nettoyer()
+
+    def enregistrer_resultat(self, resultat):
+        """Met à jour le résultat en BD et incrémente les stats"""
+        if self.id_partie_bd:
+            partie = self.db.query(Partie).get(self.id_partie_bd)
+            if partie:
+                partie.resultat = resultat
+                self.db.commit()
 
     def nettoyer(self):
         """Nettoie la session lors de la déconnexion"""
@@ -343,6 +441,20 @@ class Session(Thread):
         except:
             pass
 
+class GestionnaireBD:
+    def __init__(self, db_path="echecs.db"):
+        self.db_path = db_path
+
+    def ajouter_coup(self, id_partie, id_joueur, notation, numero_coup):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO COUP (idPartie, idJoueur, notation, numeroCoup, dateHeure)
+            VALUES (?, ?, ?, ?, datetime('now'))
+        """, (id_partie, id_joueur, notation, numero_coup))
+        conn.commit()
+        conn.close()
+
 
 if __name__ == "__main__":
-    Serveur().demarrer(15001)
+    Serveur().menu_démarrage()
